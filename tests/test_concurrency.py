@@ -70,6 +70,44 @@ async def test_stock_never_goes_negative_when_demand_far_exceeds_supply(
     assert remaining == 0
 
 
+async def checkout_two_products(first: int, second: int) -> int:
+    """A multi-line order, with the lines added in a caller-chosen order."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        cart_id = (await client.post("/carts")).json()["id"]
+        for product_id in (first, second):
+            await client.post(
+                f"/carts/{cart_id}/items", json={"product_id": product_id, "quantity": 1}
+            )
+        response = await client.post(f"/carts/{cart_id}/checkout")
+        return response.status_code
+
+
+async def test_multi_line_orders_in_opposing_order_do_not_deadlock(
+    session: AsyncSession,
+) -> None:
+    """Two orders grabbing the same two products in opposite order would
+    deadlock if each locked them in the order the client happened to add them:
+    one holds A and waits for B while the other holds B and waits for A, and
+    Postgres kills one of them. The locking read sorts by product id, so every
+    transaction takes locks in the same order and the cycle cannot form.
+
+    A deadlock would surface as a 500, so the assertion is that all of these
+    succeed rather than that some specific one does.
+    """
+    results = await asyncio.gather(
+        *(checkout_two_products(1, 7) for _ in range(6)),
+        *(checkout_two_products(7, 1) for _ in range(6)),
+    )
+
+    assert results.count(201) == 12, f"expected 12 clean checkouts, got {results}"
+
+    for product_id, seeded in ((1, 25), (7, 30)):
+        remaining = await session.scalar(
+            select(Product.stock_quantity).where(Product.id == product_id)
+        )
+        assert remaining == seeded - 12
+
+
 async def test_everyone_succeeds_when_stock_is_sufficient(session: AsyncSession) -> None:
     """The lock must not reject orders that should have been fine."""
     await set_stock(session, 10)

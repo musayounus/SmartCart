@@ -24,6 +24,18 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    # /health executes SELECT 1, so this reports the database link, not just
+    # that the process is up. Lets `docker compose up --wait` mean something.
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://localhost:8000/health')
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
 
 volumes:
   pgdata:

@@ -44,3 +44,44 @@ jobs:
 
       - name: Test
         run: pytest -v
+
+  # The suite above runs against a service container, which never exercises the
+  # Dockerfile or the compose wiring. This job does: it brings the real stack
+  # up and drives it, so an image that builds but will not boot fails here
+  # rather than during a demo.
+  stack:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and start the stack
+        run: docker compose up --build --wait --timeout 120
+
+      - name: Health endpoint reports the database link is live
+        run: |
+          curl --fail --silent http://localhost:8000/health | tee /dev/stderr | grep -q '"status":"ok"'
+
+      - name: Catalog is seeded and served
+        run: |
+          count=$(curl --fail --silent http://localhost:8000/products | python -c "import sys,json; print(len(json.load(sys.stdin)))")
+          echo "products: $count"
+          test "$count" -eq 7
+
+      - name: Checkout decrements stock end to end
+        run: |
+          cart=$(curl --fail --silent -X POST http://localhost:8000/carts | python -c "import sys,json; print(json.load(sys.stdin)['id'])")
+          curl --fail --silent -X POST "http://localhost:8000/carts/$cart/items" \
+            -H 'Content-Type: application/json' -d '{"product_id":1,"quantity":2}' > /dev/null
+          curl --fail --silent -X POST "http://localhost:8000/carts/$cart/checkout" | tee /dev/stderr | grep -q '"total":"84.00"'
+          stock=$(curl --fail --silent http://localhost:8000/products | python -c "import sys,json; print([p for p in json.load(sys.stdin) if p['id']==1][0]['stock_quantity'])")
+          echo "stock after checkout: $stock"
+          test "$stock" -eq 23
+
+      - name: Container logs on failure
+        if: failure()
+        run: docker compose logs
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
