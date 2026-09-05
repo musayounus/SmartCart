@@ -191,10 +191,13 @@ rather than CIDR, so widening a subnet cannot accidentally widen access.
 ```bash
 cd terraform
 terraform init
-TF_VAR_db_password=... terraform plan
+terraform validate     # no AWS credentials needed
 ```
 
-The database password is a variable with no default so it cannot be committed.
+`terraform plan` additionally needs credentials and `TF_VAR_db_password`, since
+it queries the account for availability zones. The database password is a
+variable with no default so it cannot be committed; in production it would come
+from Secrets Manager rather than a variable at all.
 
 ## Known gaps
 
