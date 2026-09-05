@@ -6,7 +6,7 @@ from sqlalchemy import text
 
 from app.db import Base, SessionDep, SessionLocal, engine
 from app.routers import carts, orders, products
-from app.seed import seed_products
+from app.seed import seed_order_history, seed_products
 
 
 @asynccontextmanager
@@ -20,6 +20,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         await connection.run_sync(Base.metadata.create_all)
     async with SessionLocal() as session:
         await seed_products(session)
+        await seed_order_history(session)
     yield
 
 

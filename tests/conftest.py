@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import Base, SessionLocal, engine
 from app.main import app
-from app.seed import seed_products
+from app.seed import seed_order_history, seed_products
 
 
 @pytest.fixture(autouse=True)
@@ -22,6 +22,7 @@ async def schema() -> AsyncIterator[None]:
         await connection.run_sync(Base.metadata.create_all)
     async with SessionLocal() as session:
         await seed_products(session)
+        await seed_order_history(session)
     yield
     # pytest-asyncio gives each test its own event loop, but the engine's pool
     # caches connections bound to the loop that opened them. Disposing here

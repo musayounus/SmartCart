@@ -58,3 +58,10 @@ class OrderSummaryOut(BaseModel):
     status: str
     total: Decimal
     created_at: datetime
+
+
+class RecommendationOut(BaseModel):
+    product_id: int
+    name: str
+    price: Decimal
+    bought_together_count: int

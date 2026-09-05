@@ -34,13 +34,19 @@ async def test_checkout_records_the_price_paid_not_the_current_price(
 ) -> None:
     """An order is a record of what was charged; a later price change must not rewrite it."""
     cart_id = await cart_with(client, product_id=1, quantity=1)
-    await client.post(f"/carts/{cart_id}/checkout")
+    order_id = (await client.post(f"/carts/{cart_id}/checkout")).json()["id"]
 
     product = await session.get(Product, 1)
     product.price = Decimal("99.00")
     await session.commit()
 
-    recorded = await session.scalar(select(OrderItem.price_at_purchase))
+    # Scoped to this order specifically. Unfiltered, this would read whichever
+    # order_items row came back first -- including a seeded one.
+    recorded = await session.scalar(
+        select(OrderItem.price_at_purchase).where(
+            OrderItem.order_id == order_id, OrderItem.product_id == 1
+        )
+    )
     assert recorded == Decimal("42.00")
 
 
