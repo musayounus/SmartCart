@@ -32,3 +32,17 @@ class CartOut(BaseModel):
     id: uuid.UUID
     items: list[CartItemOut]
     total: Decimal
+
+
+class OrderItemOut(BaseModel):
+    product_id: int
+    name: str
+    quantity: int
+    price_at_purchase: Decimal
+
+
+class OrderOut(BaseModel):
+    id: int
+    status: str
+    total: Decimal
+    items: list[OrderItemOut]
