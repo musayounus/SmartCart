@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import Base, SessionLocal, engine
 from app.main import app
 from app.seed import seed_order_history, seed_products
+from app.services.rate_limit import limiter
 
 
 @pytest.fixture(autouse=True)
@@ -23,6 +24,10 @@ async def schema() -> AsyncIterator[None]:
     async with SessionLocal() as session:
         await seed_products(session)
         await seed_order_history(session)
+    # The rate limiter is process-global. Without this, checkouts accumulate
+    # across tests and the concurrency tests start seeing 429s -- which would
+    # look like a concurrency failure rather than a test-isolation problem.
+    limiter.reset()
     yield
     # pytest-asyncio gives each test its own event loop, but the engine's pool
     # caches connections bound to the loop that opened them. Disposing here

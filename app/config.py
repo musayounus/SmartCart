@@ -6,5 +6,12 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+asyncpg://smartcart:smartcart@localhost:5432/smartcart"
 
+    # Checkouts allowed per client per window. The default is well above what
+    # the concurrency tests burst (20), deliberately: a limit tight enough to
+    # interfere would mask the oversell proof rather than break it visibly.
+    # Set to 0 to disable.
+    checkout_rate_limit: int = 60
+    checkout_rate_window_seconds: int = 60
+
 
 settings = Settings()
