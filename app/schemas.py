@@ -65,3 +65,18 @@ class RecommendationOut(BaseModel):
     name: str
     price: Decimal
     bought_together_count: int
+
+
+class ShoppingListItemOut(BaseModel):
+    ingredient: str
+    product_id: int
+    name: str
+    price: Decimal
+    in_stock: bool
+
+
+class ShoppingListOut(BaseModel):
+    dish: str
+    items: list[ShoppingListItemOut]
+    unavailable: list[str]
+    estimated_total: Decimal
