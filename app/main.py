@@ -1,14 +1,30 @@
-from typing import Annotated
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI
+from fastapi import FastAPI
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db import get_session
+from app.db import Base, SessionDep, SessionLocal, engine
+from app.routers import products
+from app.seed import seed_products
 
-app = FastAPI(title="SmartCart", version="0.1.0")
 
-SessionDep = Annotated[AsyncSession, Depends(get_session)]
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    """Build the schema and seed the catalog.
+
+    No Alembic: the schema is fixed for the life of this demo, so migrations
+    would add a moving part without demonstrating anything. See the README.
+    """
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    async with SessionLocal() as session:
+        await seed_products(session)
+    yield
+
+
+app = FastAPI(title="SmartCart", version="0.1.0", lifespan=lifespan)
+app.include_router(products.router)
 
 
 @app.get("/health")

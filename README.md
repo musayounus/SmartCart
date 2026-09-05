@@ -20,27 +20,26 @@ no manual database creation, no migration step.
 
 ## Testing
 
-The suite needs a Postgres instance. With the stack already up:
+The suite needs Postgres, which `docker compose` already publishes on 5432.
+The application image intentionally ships without test dependencies, so run
+the suite against that database from the host:
 
 ```bash
-docker compose exec api pytest -v
-```
-
-Or against a local Postgres, outside Docker:
-
-```bash
+docker compose up -d db
 pip install -e ".[dev]"
-cp .env.example .env
 pytest -v
 ```
+
+CI runs the same suite against a Postgres service container on every push.
 
 ## API
 
 | Method | Path | Purpose |
 |---|---|---|
 | `GET` | `/health` | Liveness, and proves the database link is live. |
+| `GET` | `/products` | Catalog with current stock. |
 
-_Catalog, cart, and checkout endpoints: TBD._
+_Cart and checkout endpoints: TBD._
 
 ## Data model
 
