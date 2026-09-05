@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -46,3 +47,14 @@ class OrderOut(BaseModel):
     status: str
     total: Decimal
     items: list[OrderItemOut]
+
+
+class OrderSummaryOut(BaseModel):
+    """History listing: no line items, so the list stays cheap to read."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    status: str
+    total: Decimal
+    created_at: datetime
