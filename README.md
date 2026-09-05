@@ -32,7 +32,8 @@ pytest -v
 ```
 
 The concurrency proof is `tests/test_concurrency.py`. CI runs the same suite
-against a Postgres service container on every push.
+against a Postgres service container on every push, and a second job builds the
+image and drives the running stack end to end.
 
 ## API
 
@@ -43,10 +44,36 @@ against a Postgres service container on every push.
 | `POST` | `/carts` | Create a cart, returns its UUID. |
 | `POST` | `/carts/{cart_id}/items` | Add a product and quantity. |
 | `GET`  | `/carts/{cart_id}` | Contents and server-computed total. |
-| `POST` | `/carts/{cart_id}/checkout` | Place the order. |
+| `POST` | `/carts/{cart_id}/checkout` | Place the order. Rate limited. |
+| `GET`  | `/orders` | Order history, newest first. |
+| `GET`  | `/orders/{order_id}` | One order with its line items. |
+| `GET`  | `/products/{id}/recommendations` | Frequently bought together. |
+| `GET`  | `/assistant/shopping-list?dish=kabsa` | Dish resolved into a shopping list. |
 
 No endpoint accepts a price. Totals are always derived from `products.price` at
 read time, so a client cannot name its own price even by accident.
+
+### Beyond the core
+
+Three of these are extras built once the checkout path was finished and proven.
+
+**Recommendations** rank products by how often they appear in the same orders,
+via a self-join on `order_items`. No model, no training — the ranking is a
+count you can verify by reading the order history. It inherits the usual
+co-occurrence weakness, where popular products look related to everything; with
+real traffic the fix is lift rather than raw count.
+
+**The ingredient assistant** maps a dish onto catalog products through a curated
+ingredient table, and reports what the catalog *cannot* supply rather than
+silently dropping it. It is a lookup, deliberately: deterministic, offline, and
+it cannot fail mid-demo. An LLM resolving arbitrary dishes with the catalog as
+grounding would replace only where the ingredient list comes from — the matching
+and the response shape would be unchanged.
+
+**Rate limiting** on checkout is a fixed window per client, applied as a
+dependency in front of the transaction so a rejected request consumes no stock.
+Its default limit is set well above what the concurrency tests burst, on
+purpose — see below.
 
 ## Architecture
 
@@ -168,9 +195,27 @@ into one event loop and each opens its own database session, producing `M`
 overlapping Postgres transactions. A synchronous `TestClient` would serialise
 them and pass whether or not any locking existed.
 
-**The test was negative-controlled.** Removing `FOR UPDATE` makes all three
+**The test was negative-controlled.** Removing `FOR UPDATE` makes all four
 concurrency tests fail. A concurrency test that passes against broken code
 proves nothing, so this was checked rather than assumed.
+
+`ORDER BY id` has its own test: twelve concurrent multi-line orders grabbing
+the same two products in opposing order all complete cleanly, where unsorted
+locking would let two of them deadlock.
+
+### Rate limiting versus the proof
+
+The two features are in tension, and it is worth being explicit about how that
+was resolved. The concurrency tests fire twenty concurrent checkouts from one
+client. A per-client rate limit tight enough to catch that would return 429s —
+and 429s look like *successful* rejections to an oversell assertion, so the
+limiter would quietly mask the race rather than fail loudly.
+
+So the shipped limit sits well above that burst, the rate-limit tests set their
+own tight limit to prove rejection works, and the negative control was re-run
+with the limiter active to confirm removing `FOR UPDATE` still fails every
+concurrency test. The two are tested independently rather than one degrading
+the other.
 
 Single-process testing is sufficient because the invariant is enforced by
 Postgres row locks and a `CHECK` constraint, not by in-process coordination —
@@ -214,4 +259,13 @@ Deliberate omissions, stated rather than hidden:
   thing worth changing with more time.
 - **The database password reaches the task as an environment variable.** It
   should come from Secrets Manager.
-- No payments, delivery, rate limiting, order history, or HA infrastructure.
+- **Rate limiting is in-memory, so it is per-process.** Two Fargate tasks would
+  each allow the full limit. Production wants Redis. This contrasts usefully
+  with the stock invariant, which lives in Postgres precisely so that it does
+  *not* have this problem — the difference between a courtesy control and a
+  correctness guarantee.
+- **Seeded order history does not decrement stock.** Those rows represent past
+  activity for the recommendations endpoint; reducing the seeded counts would
+  make the concurrency demo's numbers harder to follow. Demo scaffolding, not a
+  simulation.
+- No payments, delivery, or HA infrastructure.
