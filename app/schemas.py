@@ -1,6 +1,7 @@
+import uuid
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ProductOut(BaseModel):
@@ -10,3 +11,24 @@ class ProductOut(BaseModel):
     name: str
     price: Decimal
     stock_quantity: int
+
+
+class CartItemIn(BaseModel):
+    """Deliberately has no price field: the client never gets to name a price."""
+
+    product_id: int
+    quantity: int = Field(gt=0)
+
+
+class CartItemOut(BaseModel):
+    product_id: int
+    name: str
+    unit_price: Decimal
+    quantity: int
+    line_total: Decimal
+
+
+class CartOut(BaseModel):
+    id: uuid.UUID
+    items: list[CartItemOut]
+    total: Decimal

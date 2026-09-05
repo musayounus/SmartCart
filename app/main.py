@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from sqlalchemy import text
 
 from app.db import Base, SessionDep, SessionLocal, engine
-from app.routers import products
+from app.routers import carts, products
 from app.seed import seed_products
 
 
@@ -25,6 +25,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title="SmartCart", version="0.1.0", lifespan=lifespan)
 app.include_router(products.router)
+app.include_router(carts.router)
 
 
 @app.get("/health")
