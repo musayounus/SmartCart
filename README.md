@@ -37,6 +37,10 @@ pip install -e ".[dev]"
 pytest -v
 ```
 
+`.env.example` documents every setting the application reads. Copying it to
+`.env` is optional — the defaults already match what compose publishes — but it
+is the place to look for what is configurable, `REDIS_URL` in particular.
+
 The concurrency proof is `tests/test_concurrency.py`. CI runs the same suite
 against a Postgres service container on every push, and a second job builds the
 image and drives the running stack end to end.
