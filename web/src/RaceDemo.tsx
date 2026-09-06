@@ -1,0 +1,134 @@
+import { useState } from "react";
+import { raceCheckout, type Product } from "./api";
+
+type Outcome = "pending" | "fulfilled" | "refused" | "error";
+
+const OUTCOME_BY_STATUS: Record<number, Outcome> = {
+  201: "fulfilled",
+  409: "refused",
+};
+
+interface Props {
+  products: Product[];
+  onFinished: () => void;
+}
+
+/**
+ * Fires N checkouts at one product simultaneously and shows each landing.
+ *
+ * Promise.all means every request is genuinely in flight at once, so the
+ * browser reproduces the same contention the pytest suite does -- against the
+ * real API, not a simulation.
+ */
+export function RaceDemo({ products, onFinished }: Props) {
+  const [productId, setProductId] = useState(products[0]?.id ?? 1);
+  const [shoppers, setShoppers] = useState(10);
+  const [outcomes, setOutcomes] = useState<Outcome[]>([]);
+  const [running, setRunning] = useState(false);
+  const [startStock, setStartStock] = useState<number | null>(null);
+
+  const product = products.find((p) => p.id === productId);
+
+  async function run() {
+    setRunning(true);
+    setStartStock(product?.stock_quantity ?? null);
+    setOutcomes(Array(shoppers).fill("pending"));
+
+    await Promise.all(
+      Array.from({ length: shoppers }, async (_, i) => {
+        const status = await raceCheckout(productId);
+        setOutcomes((prev) => {
+          const next = [...prev];
+          next[i] = OUTCOME_BY_STATUS[status] ?? "error";
+          return next;
+        });
+      }),
+    );
+
+    setRunning(false);
+    onFinished();
+  }
+
+  const fulfilled = outcomes.filter((o) => o === "fulfilled").length;
+  const refused = outcomes.filter((o) => o === "refused").length;
+  const settled = outcomes.length > 0 && !running;
+
+  return (
+    <section className="panel">
+      <h2>Send {shoppers} shoppers after the same item</h2>
+      <p className="lede">
+        Every request leaves at the same moment and competes for the same rows. Stock decides how
+        many can win; the rest are turned away rather than sold something that isn't there.
+      </p>
+
+      <div className="race-controls">
+        <label>
+          Item
+          <select
+            value={productId}
+            onChange={(e) => setProductId(Number(e.target.value))}
+            disabled={running}
+          >
+            {products.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name} — {p.stock_quantity} in stock
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label>
+          Shoppers
+          <input
+            type="number"
+            min={1}
+            max={40}
+            value={shoppers}
+            onChange={(e) => setShoppers(Math.min(40, Math.max(1, Number(e.target.value))))}
+            disabled={running}
+            style={{ width: "4.5rem" }}
+          />
+        </label>
+
+        <button onClick={run} disabled={running || !product}>
+          {running ? "Running…" : "Run the race"}
+        </button>
+      </div>
+
+      {outcomes.length > 0 && (
+        <>
+          <div className="grid" aria-live="polite">
+            {outcomes.map((outcome, i) => (
+              <div key={i} className={`cell ${outcome}`}>
+                {outcome === "fulfilled" && "201"}
+                {outcome === "refused" && "409"}
+                {outcome === "error" && "!"}
+              </div>
+            ))}
+          </div>
+
+          <div className="tally">
+            <div className="fulfilled">
+              <span className="n">{fulfilled}</span>fulfilled
+            </div>
+            <div className="refused">
+              <span className="n">{refused}</span>turned away
+            </div>
+            <div>
+              <span className="n">{product?.stock_quantity ?? "—"}</span>
+              left {startStock !== null && `of ${startStock}`}
+            </div>
+          </div>
+        </>
+      )}
+
+      {settled && startStock !== null && (
+        <p className="verdict">
+          {fulfilled === Math.min(startStock, shoppers)
+            ? `Exactly ${fulfilled} sold from ${startStock} in stock. Stock never went below zero, and no unit was sold twice.`
+            : `${fulfilled} sold from ${startStock} in stock.`}
+        </p>
+      )}
+    </section>
+  );
+}

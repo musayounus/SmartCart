@@ -52,5 +52,13 @@ services:
       retries: 10
       start_period: 10s
 
+  web:
+    build: ./web
+    ports:
+      - "3000:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
 volumes:
   pgdata:
