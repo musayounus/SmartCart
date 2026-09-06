@@ -1,9 +1,10 @@
 from decimal import Decimal
 
 from httpx import AsyncClient
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db import SessionLocal
 from app.models import OrderItem, Product
 
 
@@ -126,3 +127,46 @@ async def test_unknown_cart_cannot_be_checked_out(client: AsyncClient) -> None:
     response = await client.post("/carts/00000000-0000-0000-0000-000000000000/checkout")
 
     assert response.status_code == 404
+
+
+async def test_locked_read_ignores_anything_cached_before(session: AsyncSession) -> None:
+    """A locking read must report the row as it is now, not as it was cached.
+
+    This is the shape of the bug that made an early version oversell while
+    holding the lock correctly: something loads Product into the session's
+    identity map, and SQLAlchemy then hands back that instance rather than the
+    values just read under the lock. The arithmetic runs on a stale number and
+    writes an absolute quantity, so stock lands on a plausible value and the
+    CHECK constraint never fires.
+
+    The regression is pinned with a live reference on purpose. The identity map
+    holds weak references, so without one the cached Product is usually
+    collected before the locking read and the bug hides -- it passed twelve
+    consecutive suite runs while present.
+    """
+    await session.execute(update(Product).where(Product.id == 6).values(stock_quantity=1))
+    await session.commit()
+
+    # Load Product into the map the way loading a Cart entity would, and hold it.
+    cached = await session.get(Product, 6)
+    assert cached.stock_quantity == 1
+
+    async with SessionLocal() as other:
+        await other.execute(update(Product).where(Product.id == 6).values(stock_quantity=0))
+        await other.commit()
+
+    locked = (
+        await session.scalars(
+            select(Product)
+            .where(Product.id.in_([6]))
+            .order_by(Product.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).all()
+
+    assert locked[0].stock_quantity == 0, (
+        "the locking read returned a value cached before the lock -- "
+        "checkout would decrement from a stale number and oversell"
+    )
+    assert cached.stock_quantity == 0

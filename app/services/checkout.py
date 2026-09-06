@@ -25,12 +25,13 @@ async def checkout(session: AsyncSession, cart_id: uuid.UUID) -> OrderOut:
     locks in the same order, so two multi-line orders touching the same
     products in opposite order cannot deadlock against each other.
     """
-    if await session.get(Cart, cart_id) is None:
+    # Columns only, never `session.get(Cart, ...)`. Loading the Cart entity
+    # follows selectin from Cart to CartItem to Product, putting every Product
+    # in the identity map at its *pre-lock* stock value.
+    if await session.scalar(select(Cart.id).where(Cart.id == cart_id)) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Cart {cart_id} not found")
 
-    # Columns only, deliberately. Selecting CartItem as an entity would follow
-    # its selectin relationship and pull each Product into the identity map at
-    # its *pre-lock* stock value.
+    # Columns again, for the same reason.
     rows = await session.execute(
         select(CartItem.product_id, CartItem.quantity).where(CartItem.cart_id == cart_id)
     )
@@ -40,7 +41,23 @@ async def checkout(session: AsyncSession, cart_id: uuid.UUID) -> OrderOut:
 
     locked = (
         await session.scalars(
-            select(Product).where(Product.id.in_(wanted)).order_by(Product.id).with_for_update()
+            select(Product)
+            .where(Product.id.in_(wanted))
+            .order_by(Product.id)
+            .with_for_update()
+            # Not optional, and not belt-and-braces. Without it, a Product
+            # already in the identity map keeps the attributes it was first
+            # loaded with and the freshly locked values are discarded -- the
+            # lock is held correctly and the arithmetic runs on a stale number.
+            #
+            # This was removed once on the reasoning that reading columns above
+            # meant nothing could preload Product. That reasoning was wrong,
+            # and the tests did not catch it: the identity map holds weak
+            # references, so the cart was usually collected before the locking
+            # read and the bug only appeared when it happened to survive.
+            # Correctness that depends on garbage collection timing is not
+            # correctness. See test_locked_read_ignores_anything_cached_before.
+            .execution_options(populate_existing=True)
         )
     ).all()
 
