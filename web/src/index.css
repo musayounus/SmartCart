@@ -197,6 +197,10 @@ main {
   color: var(--ink-soft);
 }
 
+.race-shopper-count {
+  width: 4.5rem;
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(58px, 1fr));

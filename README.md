@@ -236,13 +236,40 @@ rather than CIDR, so widening a subnet cannot accidentally widen access.
 ```bash
 cd terraform
 terraform init
-terraform validate     # no AWS credentials needed
+terraform validate     
 ```
 
 `terraform plan` additionally needs credentials and `TF_VAR_db_password`, since
-it queries the account for availability zones. The database password is a
-variable with no default so it cannot be committed; in production it would come
-from Secrets Manager rather than a variable at all.
+it queries the account for availability zones.
+
+A few choices worth naming:
+
+- **Two containers in one task, not two services.** They share a network
+  namespace, so nginx reaches the API on localhost exactly as it does by
+  service name under compose. No service discovery, and no path rewriting at
+  the load balancer, which an ALB cannot do anyway.
+- **No NAT gateway.** It was the largest line item and existed only so
+  private-subnet tasks could reach ECR and CloudWatch. Tasks run in public
+  subnets with inbound restricted to the load balancer's security group;
+  the database and cache stay private with no route out. VPC interface
+  endpoints are the textbook alternative but four of them cost about what the
+  NAT did.
+- **ElastiCache Serverless on Valkey**, not a node. Compute scales to zero
+  between demos and there is no node type or parameter group to pin. Valkey
+  is protocol compatible, so the client is unchanged; serverless enforces TLS,
+  hence `rediss://`.
+- **The connection string lives in Secrets Manager**, injected into the
+  container at start rather than sitting in the task definition where the
+  console would show it.
+- **The execution role policy is written out rather than managed.**
+  `AmazonECSTaskExecutionRolePolicy` grants ECR and logs on `Resource "*"`;
+  this stack scopes them to the two repositories, the one log group and the
+  one secret it actually uses.
+- **`Fargate` over EC2.** The container is already the deployable artifact,
+  and quick-commerce traffic is spiky — per-second billing and fast scale-out
+  suit that better than an ASG's boot-time scaling. EC2 wins on sustained
+  predictable load, where the per-vCPU premium adds up and Graviton with
+  Savings Plans is materially cheaper.
 
 ## Known gaps
 
