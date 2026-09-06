@@ -136,3 +136,56 @@ async def test_removing_from_an_unknown_cart_is_rejected(client: AsyncClient) ->
     response = await client.delete("/carts/00000000-0000-0000-0000-000000000000/items/1")
 
     assert response.status_code == 404
+
+
+async def test_reducing_a_line_keeps_it(client: AsyncClient) -> None:
+    cart_id = await create_cart(client)
+    await client.post(f"/carts/{cart_id}/items", json={"product_id": 1, "quantity": 3})
+
+    response = await client.patch(f"/carts/{cart_id}/items/1", json={"quantity": 1})
+
+    assert response.status_code == 200
+    assert response.json()["items"][0]["quantity"] == 1
+    assert Decimal(response.json()["total"]) == Decimal("42.00")
+
+
+async def test_reducing_one_line_leaves_the_others_alone(client: AsyncClient) -> None:
+    cart_id = await create_cart(client)
+    await client.post(f"/carts/{cart_id}/items", json={"product_id": 1, "quantity": 3})
+    await client.post(f"/carts/{cart_id}/items", json={"product_id": 5, "quantity": 2})
+
+    cart = (await client.patch(f"/carts/{cart_id}/items/1", json={"quantity": 1})).json()
+
+    quantities = {i["product_id"]: i["quantity"] for i in cart["items"]}
+    assert quantities == {1: 1, 5: 2}
+    # 1 * 42.00 + 2 * 7.25
+    assert Decimal(cart["total"]) == Decimal("56.50")
+
+
+async def test_reducing_is_idempotent(client: AsyncClient) -> None:
+    """Absolute quantity, not a delta: a retried request must not reduce twice."""
+    cart_id = await create_cart(client)
+    await client.post(f"/carts/{cart_id}/items", json={"product_id": 1, "quantity": 3})
+
+    await client.patch(f"/carts/{cart_id}/items/1", json={"quantity": 2})
+    cart = (await client.patch(f"/carts/{cart_id}/items/1", json={"quantity": 2})).json()
+
+    assert cart["items"][0]["quantity"] == 2
+
+
+async def test_reducing_to_zero_is_rejected(client: AsyncClient) -> None:
+    """Emptying a line is what DELETE is for."""
+    cart_id = await create_cart(client)
+    await client.post(f"/carts/{cart_id}/items", json={"product_id": 1, "quantity": 2})
+
+    for quantity in (0, -1):
+        response = await client.patch(f"/carts/{cart_id}/items/1", json={"quantity": quantity})
+        assert response.status_code == 422
+
+
+async def test_reducing_a_line_that_is_not_there_is_rejected(client: AsyncClient) -> None:
+    cart_id = await create_cart(client)
+
+    response = await client.patch(f"/carts/{cart_id}/items/1", json={"quantity": 1})
+
+    assert response.status_code == 404

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   api,
   ApiError,
@@ -18,9 +18,24 @@ export default function App() {
   const [cart, setCart] = useState<Cart | null>(null);
   const [orders, setOrders] = useState<OrderSummary[]>([]);
   const [error, setError] = useState("");
+  // Which levels changed on the last refresh, so the counter can flash them.
+  // Without that the strip is just numbers; the flash is what makes it worth
+  // watching while a race runs.
+  const previousStock = useRef<Record<number, number>>({});
+  const [moved, setMoved] = useState<Set<number>>(new Set());
 
   const refresh = useCallback(async () => {
-    setProducts(await api.products());
+    const next = await api.products();
+    setMoved(
+      new Set(
+        next
+          .filter((p) => previousStock.current[p.id] !== undefined)
+          .filter((p) => previousStock.current[p.id] !== p.stock_quantity)
+          .map((p) => p.id),
+      ),
+    );
+    previousStock.current = Object.fromEntries(next.map((p) => [p.id, p.stock_quantity]));
+    setProducts(next);
     setOrders(await api.orders());
   }, []);
 
@@ -44,6 +59,12 @@ export default function App() {
     if (updated) setCart(updated);
   }
 
+  async function reduce(productId: number, to: number) {
+    if (!cart) return;
+    const updated = await act(() => api.setItemQuantity(cart.id, productId, to));
+    if (updated) setCart(updated);
+  }
+
   async function remove(productId: number) {
     if (!cart) return;
     const updated = await act(() => api.removeItem(cart.id, productId));
@@ -63,14 +84,26 @@ export default function App() {
     <>
       <header className="strip">
         <span className="mark">SmartCart</span>
-        <span className="strip-note">Jeddah</span>
+        <div className="chips">
+          {products.map((p) => (
+            <span
+              key={p.id}
+              className={`chip ${p.stock_quantity === 0 ? "depleted" : ""} ${
+                moved.has(p.id) ? "moved" : ""
+              }`}
+            >
+              {p.name.replace(/ \d.*$/, "")}
+              <b>{p.stock_quantity}</b>
+            </span>
+          ))}
+        </div>
       </header>
 
       <main>
         <h1>Nothing here can be sold twice.</h1>
         <p className="lede">
           A grocery service for Jeddah, built so that shoppers racing for the last item on the shelf
-          get a truthful answer. Run the race below and watch the shelf drain.
+          get a truthful answer. Run the race below and watch the counter above drain.
         </p>
 
         {error && <p className="error">{error}</p>}
@@ -80,7 +113,7 @@ export default function App() {
         <div className="split">
           <Catalog products={products} onAdd={add} />
           <div>
-            <CartPanel cart={cart} onCheckout={placeOrder} onRemove={remove} />
+            <CartPanel cart={cart} onCheckout={placeOrder} onRemove={remove} onReduce={reduce} />
             <Assistant />
             <Orders orders={orders} />
           </div>
@@ -150,10 +183,12 @@ function CartPanel({
   cart,
   onCheckout,
   onRemove,
+  onReduce,
 }: {
   cart: Cart | null;
   onCheckout: () => void;
   onRemove: (productId: number) => void;
+  onReduce: (productId: number, to: number) => void;
 }) {
   return (
     <section className="panel">
@@ -165,7 +200,19 @@ function CartPanel({
           {cart.items.map((item) => (
             <div className="row" key={item.product_id}>
               <span className="name">{item.name}</span>
-              <span className="meta">×{item.quantity}</span>
+              <span className="qty">
+                <button
+                  type="button"
+                  className="step"
+                  onClick={() => onReduce(item.product_id, item.quantity - 1)}
+                  disabled={item.quantity < 2}
+                  aria-label={`One fewer ${item.name}`}
+                  title="One fewer"
+                >
+                  &minus;
+                </button>
+                {item.quantity}
+              </span>
               <span className="price">{sar(item.line_total)}</span>
               <button
                 type="button"
@@ -192,15 +239,20 @@ function CartPanel({
 }
 
 function Assistant() {
-  const [dish, setDish] = useState("kabsa");
+  const [dish, setDish] = useState("Kabsa");
+  const [known, setKnown] = useState<string[]>([]);
   const [list, setList] = useState<ShoppingList | null>(null);
   const [missing, setMissing] = useState("");
 
-  async function look() {
+  useEffect(() => {
+    api.dishes().then(setKnown).catch(() => setKnown([]));
+  }, []);
+
+  async function look(name = dish) {
     setMissing("");
     setList(null);
     try {
-      setList(await api.shoppingList(dish));
+      setList(await api.shoppingList(name));
     } catch (e) {
       setMissing(e instanceof ApiError ? e.detail : String(e));
     }
@@ -211,10 +263,28 @@ function Assistant() {
       <h2>Cooking something?</h2>
       <div className="race-controls">
         <input value={dish} onChange={(e) => setDish(e.target.value)} aria-label="Dish" />
-        <button type="button" className="quiet" onClick={look}>
+        <button type="button" className="quiet" onClick={() => look()}>
           Find ingredients
         </button>
       </div>
+
+      {known.length > 0 && (
+        <div className="dishes">
+          {known.map((name) => (
+            <button
+              key={name}
+              type="button"
+              className="dish-chip"
+              onClick={() => {
+                setDish(titled(name));
+                look(name);
+              }}
+            >
+              {titled(name)}
+            </button>
+          ))}
+        </div>
+      )}
 
       {missing && <p className="error">{missing}</p>}
 

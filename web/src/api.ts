@@ -102,6 +102,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ product_id: productId, quantity }),
     }),
+  setItemQuantity: (id: string, productId: number, quantity: number) =>
+    request<Cart>(`/carts/${id}/items/${productId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ quantity }),
+    }),
   removeItem: (id: string, productId: number) =>
     request<Cart>(`/carts/${id}/items/${productId}`, { method: "DELETE" }),
   checkout: (id: string) => request<Order>(`/carts/${id}/checkout`, { method: "POST" }),
@@ -109,6 +114,7 @@ export const api = {
   orders: () => request<OrderSummary[]>("/orders"),
   order: (id: number) => request<Order>(`/orders/${id}`),
 
+  dishes: () => request<string[]>("/assistant/dishes"),
   shoppingList: (dish: string) =>
     request<ShoppingList>(`/assistant/shopping-list?dish=${encodeURIComponent(dish)}`),
 };

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, status
 
 from app.db import SessionDep
 from app.http_cache import no_store
-from app.schemas import CartItemIn, CartOut, OrderOut
+from app.schemas import CartItemIn, CartItemQuantity, CartOut, OrderOut
 from app.services import cart as cart_service
 from app.services import checkout as checkout_service
 from app.services.rate_limit import enforce_checkout_rate_limit
@@ -20,6 +20,13 @@ async def create_cart(session: SessionDep) -> CartOut:
 @router.post("/{cart_id}/items", response_model=CartOut)
 async def add_item(cart_id: uuid.UUID, payload: CartItemIn, session: SessionDep) -> CartOut:
     return await cart_service.add_item(session, cart_id, payload.product_id, payload.quantity)
+
+
+@router.patch("/{cart_id}/items/{product_id}", response_model=CartOut)
+async def set_item_quantity(
+    cart_id: uuid.UUID, product_id: int, payload: CartItemQuantity, session: SessionDep
+) -> CartOut:
+    return await cart_service.set_item_quantity(session, cart_id, product_id, payload.quantity)
 
 
 @router.delete("/{cart_id}/items/{product_id}", response_model=CartOut)

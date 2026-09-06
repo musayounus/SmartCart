@@ -53,10 +53,28 @@ async def test_unknown_dish_lists_what_it_does_know(client: AsyncClient) -> None
     response = await client.get("/assistant/shopping-list", params={"dish": "lasagne"})
 
     assert response.status_code == 404
-    assert "kabsa" in response.json()["detail"]
+    # Title case: the message is for a person, the lowercase key is for lookup.
+    assert "Kabsa" in response.json()["detail"]
 
 
 async def test_dish_is_required(client: AsyncClient) -> None:
     response = await client.get("/assistant/shopping-list")
 
     assert response.status_code == 422
+
+
+async def test_known_dishes_are_listed(client: AsyncClient) -> None:
+    """So a client can offer the dishes instead of making someone guess."""
+    response = await client.get("/assistant/dishes")
+
+    assert response.status_code == 200
+    assert "kabsa" in response.json()
+
+
+async def test_unknown_dish_message_reads_in_title_case(client: AsyncClient) -> None:
+    """Lowercase is the lookup key, not what a person should be shown."""
+    detail = (await client.get("/assistant/shopping-list", params={"dish": "lasagne"})).json()[
+        "detail"
+    ]
+
+    assert "Kabsa" in detail

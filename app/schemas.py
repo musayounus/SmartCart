@@ -21,6 +21,16 @@ class CartItemIn(BaseModel):
     quantity: int = Field(gt=0)
 
 
+class CartItemQuantity(BaseModel):
+    """Absolute quantity, not a delta, so a retried request cannot reduce twice.
+
+    Zero is refused: removing a line is what DELETE is for, and two ways to do
+    the same thing is one too many.
+    """
+
+    quantity: int = Field(gt=0)
+
+
 class CartItemOut(BaseModel):
     product_id: int
     name: str

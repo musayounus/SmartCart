@@ -8,6 +8,13 @@ from app.services.assistant import known_dishes, shopping_list_for
 router = APIRouter(prefix="/assistant", tags=["assistant"])
 
 
+@router.get("/dishes", response_model=list[str])
+async def dishes(request: Request) -> Response:
+    """The dishes the assistant knows, so a client can offer them rather than
+    making someone guess and hit a 404."""
+    return cached(request, known_dishes(), SHORT_CACHE)
+
+
 @router.get("/shopping-list", response_model=ShoppingListOut)
 async def shopping_list(
     request: Request,
@@ -19,7 +26,9 @@ async def shopping_list(
     if result is None:
         raise HTTPException(
             status.HTTP_404_NOT_FOUND,
-            f"No recipe known for {dish!r}. Known dishes: {', '.join(known_dishes())}",
+            # Title-cased for reading; the lookup itself stays lowercase.
+            f"No recipe known for {dish!r}. "
+            f"Known dishes: {', '.join(d.capitalize() for d in known_dishes())}",
         )
     # The dish mapping is static and prices move slowly.
     return cached(request, result, SHORT_CACHE)

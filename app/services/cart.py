@@ -68,12 +68,30 @@ async def add_item(
     return await load_cart(session, cart_id)
 
 
-async def remove_item(session: AsyncSession, cart_id: uuid.UUID, product_id: int) -> CartOut:
-    """Drop a line from the cart.
+async def set_item_quantity(
+    session: AsyncSession, cart_id: uuid.UUID, product_id: int, quantity: int
+) -> CartOut:
+    """Set a line to an exact quantity. Used to reduce a line without losing it."""
+    if await session.get(Cart, cart_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Cart {cart_id} not found")
 
-    Removes the whole line rather than decrementing. A shopper who wants fewer
-    can remove and re-add; a partial-quantity control is more UI than the
-    behaviour justifies.
+    line = await session.scalar(
+        select(CartItem).where(CartItem.cart_id == cart_id, CartItem.product_id == product_id)
+    )
+    if line is None:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, f"Product {product_id} is not in cart {cart_id}"
+        )
+
+    line.quantity = quantity
+    await session.commit()
+    return await load_cart(session, cart_id)
+
+
+async def remove_item(session: AsyncSession, cart_id: uuid.UUID, product_id: int) -> CartOut:
+    """Drop a line from the cart entirely, whatever its quantity.
+
+    Reducing a line is `set_item_quantity`; this is the whole-line removal.
     """
     if await session.get(Cart, cart_id) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Cart {cart_id} not found")
