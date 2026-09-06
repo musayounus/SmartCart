@@ -54,7 +54,7 @@ export function RaceDemo({ products, onFinished }: Props) {
   const settled = outcomes.length > 0 && !running;
 
   return (
-    <section className="panel">
+    <section className="panel hero">
       <h2>Send {shoppers} shoppers after the same item</h2>
       <p className="lede">
         Every request leaves at the same moment and competes for the same rows. Stock decides how

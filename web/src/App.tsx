@@ -109,6 +109,12 @@ export default function App() {
 function Catalog({ products, onAdd }: { products: Product[]; onAdd: (id: number) => void }) {
   const [suggestions, setSuggestions] = useState<Record<number, Recommendation[]>>({});
 
+  // Bars are scaled against the fullest shelf in the shop, not against each
+  // product's own peak. Per-product scaling would put every bar at 100% on
+  // load, which says nothing; this shows at a glance which items are scarce --
+  // and they still drain live as a race consumes stock.
+  const fullest = Math.max(...products.map((p) => p.stock_quantity), 1);
+
   useEffect(() => {
     products.slice(0, 3).forEach(async (p) => {
       const recs = await api.recommendations(p.id).catch(() => []);
@@ -119,29 +125,39 @@ function Catalog({ products, onAdd }: { products: Product[]; onAdd: (id: number)
   return (
     <section className="panel">
       <h2>Today's shelf</h2>
-      {products.map((p) => (
-        <div key={p.id}>
-          <div className="row">
-            <span className="name">{p.name}</span>
-            <span className="meta">
-              {p.stock_quantity === 0 ? (
-                <span className="out">sold out</span>
-              ) : (
-                `${p.stock_quantity} left`
+      <div className="shelf">
+        {products.map((p) => {
+          const remaining = p.stock_quantity / fullest;
+          const soldOut = p.stock_quantity === 0;
+
+          return (
+            <article key={p.id} className={`card ${soldOut ? "sold-out" : ""}`}>
+              <span className="name">{p.name}</span>
+
+              <div className={`level ${remaining <= 0.25 ? "low" : ""}`}>
+                <span style={{ width: `${Math.round(remaining * 100)}%` }} />
+              </div>
+
+              <span className="stock-note">
+                {soldOut ? <span className="out">sold out</span> : `${p.stock_quantity} left`}
+              </span>
+
+              {suggestions[p.id] && (
+                <p className="suggest">
+                  Often with {suggestions[p.id].map((r) => r.name.replace(/ \d.*$/, "")).join(", ")}
+                </p>
               )}
-            </span>
-            <span className="price">{sar(p.price)}</span>
-            <button type="button" className="quiet" onClick={() => onAdd(p.id)} disabled={p.stock_quantity === 0}>
-              Add
-            </button>
-          </div>
-          {suggestions[p.id] && (
-            <p className="suggest">
-              Often bought with {suggestions[p.id].map((r) => r.name).join(", ")}
-            </p>
-          )}
-        </div>
-      ))}
+
+              <div className="card-foot">
+                <span className="price">{sar(p.price)}</span>
+                <button type="button" className="quiet" onClick={() => onAdd(p.id)} disabled={soldOut}>
+                  Add
+                </button>
+              </div>
+            </article>
+          );
+        })}
+      </div>
     </section>
   );
 }
