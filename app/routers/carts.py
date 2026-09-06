@@ -3,12 +3,13 @@ import uuid
 from fastapi import APIRouter, Depends, status
 
 from app.db import SessionDep
+from app.http_cache import no_store
 from app.schemas import CartItemIn, CartOut, OrderOut
 from app.services import cart as cart_service
 from app.services import checkout as checkout_service
 from app.services.rate_limit import enforce_checkout_rate_limit
 
-router = APIRouter(prefix="/carts", tags=["carts"])
+router = APIRouter(prefix="/carts", tags=["carts"], dependencies=[Depends(no_store)])
 
 
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=CartOut)

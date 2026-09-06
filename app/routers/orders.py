@@ -1,11 +1,12 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 
 from app.db import SessionDep
+from app.http_cache import no_store
 from app.models import Order, OrderItem, Product
 from app.schemas import OrderItemOut, OrderOut, OrderSummaryOut
 
-router = APIRouter(prefix="/orders", tags=["orders"])
+router = APIRouter(prefix="/orders", tags=["orders"], dependencies=[Depends(no_store)])
 
 
 @router.get("", response_model=list[OrderSummaryOut])
