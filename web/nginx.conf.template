@@ -21,6 +21,18 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
+    # Swagger UI is served at /api/docs, but the page it returns asks for
+    # /openapi.json at the root -- an absolute path FastAPI generates without
+    # knowing it sits behind a prefix. Without this exact-match location that
+    # request falls through to the SPA below and Swagger is handed HTML, which
+    # it cannot parse, so the page renders with no endpoints.
+    #
+    # Routing it here rather than setting FastAPI's root_path keeps the API
+    # reachable unprefixed on its own port, where /docs also works.
+    location = /openapi.json {
+        proxy_pass http://${API_UPSTREAM}/openapi.json;
+    }
+
     # Hashed asset filenames, so they can be held indefinitely.
     location /assets/ {
         expires 1y;
