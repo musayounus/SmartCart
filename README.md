@@ -8,6 +8,12 @@ Everything else exists to make that problem real. The catalog, the cart and the
 order records are the smallest surface that lets two shoppers race for the same
 tin of cardamom.
 
+**Running at
+<http://smartcart-demo-851659227.ap-south-1.elb.amazonaws.com>** — two Fargate
+tasks in separate availability zones, behind an ALB, sharing one RDS instance.
+
+![SmartCart](screenshot.png)
+
 ## Running it
 
 ```bash
