@@ -23,26 +23,6 @@ resource "aws_cloudwatch_log_group" "app" {
   retention_in_days = 7
 }
 
-# Pulls images and writes logs. The containers themselves need no AWS
-# permissions, so there is deliberately no task_role_arn.
-resource "aws_iam_role" "execution" {
-  name = "${local.name}-execution"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect    = "Allow"
-      Action    = "sts:AssumeRole"
-      Principal = { Service = "ecs-tasks.amazonaws.com" }
-    }]
-  })
-}
-
-resource "aws_iam_role_policy_attachment" "execution" {
-  role       = aws_iam_role.execution.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
-}
-
 resource "aws_ecs_cluster" "main" {
   name = local.name
 }
@@ -63,6 +43,14 @@ resource "aws_ecs_task_definition" "app" {
   memory                   = 1024
   execution_role_arn       = aws_iam_role.execution.arn
 
+  # Stated rather than left to default. ARM64 would be roughly 20% cheaper on
+  # Fargate, but the images are built on an x86 machine; switching means
+  # building multi-arch first.
+  runtime_platform {
+    cpu_architecture        = "X86_64"
+    operating_system_family = "LINUX"
+  }
+
   container_definitions = jsonencode([
     {
       name      = "api"
@@ -71,18 +59,33 @@ resource "aws_ecs_task_definition" "app" {
 
       portMappings = [{ containerPort = 8000, protocol = "tcp" }]
 
-      environment = [
-        {
-          name = "DATABASE_URL"
-          # Reachable only inside the VPC. In production this would come from
-          # Secrets Manager rather than sitting in the task definition.
-          value = "postgresql+asyncpg://${var.db_username}:${var.db_password}@${aws_db_instance.main.endpoint}/smartcart"
-        },
-        {
-          name  = "REDIS_URL"
-          value = "redis://${aws_elasticache_cluster.main.cache_nodes[0].address}:6379/0"
-        },
-      ]
+      # Serverless ElastiCache requires TLS, hence rediss rather than redis.
+      environment = [{
+        name  = "REDIS_URL"
+        value = "rediss://${aws_elasticache_serverless_cache.main.endpoint[0].address}:${aws_elasticache_serverless_cache.main.endpoint[0].port}/0"
+      }]
+
+      # Injected at container start rather than sitting in the task
+      # definition, so the password is not readable from the ECS console or
+      # describe-task-definition.
+      secrets = [{
+        name      = "DATABASE_URL"
+        valueFrom = aws_secretsmanager_secret.database_url.arn
+      }]
+
+      # Gives nginx something to wait on. /health runs SELECT 1, so healthy
+      # here means the database link is up, not merely that the process
+      # started.
+      healthCheck = {
+        command     = ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://localhost:8000/health')\" || exit 1"]
+        interval    = 10
+        timeout     = 5
+        retries     = 3
+        startPeriod = 30
+      }
+
+      # Time to finish in-flight checkouts before SIGKILL.
+      stopTimeout = 30
 
       logConfiguration = {
         logDriver = "awslogs"
@@ -105,7 +108,11 @@ resource "aws_ecs_task_definition" "app" {
         { name = "NGINX_ENVSUBST_FILTER", value = "API_UPSTREAM" },
       ]
 
-      dependsOn = [{ containerName = "api", condition = "START" }]
+      # HEALTHY, not START: nginx starting before the API can answer would
+      # fail load balancer health checks and cycle the task.
+      dependsOn = [{ containerName = "api", condition = "HEALTHY" }]
+
+      stopTimeout = 30
 
       logConfiguration = {
         logDriver = "awslogs"
@@ -162,11 +169,12 @@ resource "aws_lb_listener" "http" {
 }
 
 resource "aws_ecs_service" "app" {
-  name            = local.name
-  cluster         = aws_ecs_cluster.main.id
-  task_definition = aws_ecs_task_definition.app.arn
-  desired_count   = var.desired_count
-  launch_type     = "FARGATE"
+  name             = local.name
+  cluster          = aws_ecs_cluster.main.id
+  task_definition  = aws_ecs_task_definition.app.arn
+  desired_count    = var.desired_count
+  launch_type      = "FARGATE"
+  platform_version = "1.4.0"
 
   # Public subnets with a public IP, because there is no NAT gateway. Inbound
   # is still restricted to the load balancer by the task security group.
