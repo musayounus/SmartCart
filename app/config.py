@@ -13,5 +13,10 @@ class Settings(BaseSettings):
     checkout_rate_limit: int = 60
     checkout_rate_window_seconds: int = 60
 
+    # When set, the rate limiter counts in Redis so the limit is shared across
+    # tasks. Unset falls back to per-process counting, which is only correct
+    # for a single instance.
+    redis_url: str = ""
+
 
 settings = Settings()

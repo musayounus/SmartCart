@@ -27,7 +27,7 @@ async def schema() -> AsyncIterator[None]:
     # The rate limiter is process-global. Without this, checkouts accumulate
     # across tests and the concurrency tests start seeing 429s -- which would
     # look like a concurrency failure rather than a test-isolation problem.
-    limiter.reset()
+    await limiter.reset()
     yield
     # pytest-asyncio gives each test its own event loop, but the engine's pool
     # caches connections bound to the loop that opened them. Disposing here

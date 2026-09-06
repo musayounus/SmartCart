@@ -8,20 +8,21 @@ keeps either from quietly degrading the other.
 """
 
 import pytest
+from fastapi import HTTPException
 from httpx import AsyncClient
 
 from app.config import settings
-from app.services.rate_limit import limiter
+from app.services.rate_limit import RedisLimiter, limiter
 
 
 @pytest.fixture
-def tight_limit() -> object:
+async def tight_limit() -> object:
     original = settings.checkout_rate_limit
     settings.checkout_rate_limit = 2
-    limiter.reset()
+    await limiter.reset()
     yield
     settings.checkout_rate_limit = original
-    limiter.reset()
+    await limiter.reset()
 
 
 async def checkout_once(client: AsyncClient) -> int:
@@ -68,12 +69,12 @@ async def test_a_rejected_checkout_does_not_consume_stock(client: AsyncClient, t
 async def test_limit_of_zero_disables_the_limiter(client: AsyncClient) -> None:
     original = settings.checkout_rate_limit
     settings.checkout_rate_limit = 0
-    limiter.reset()
+    await limiter.reset()
     try:
         assert [await checkout_once(client) for _ in range(5)] == [201] * 5
     finally:
         settings.checkout_rate_limit = original
-        limiter.reset()
+        await limiter.reset()
 
 
 async def test_browsing_is_not_rate_limited(client: AsyncClient, tight_limit) -> None:
@@ -83,3 +84,33 @@ async def test_browsing_is_not_rate_limited(client: AsyncClient, tight_limit) ->
 
     assert (await client.get("/products")).status_code == 200
     assert (await client.post("/carts")).status_code == 201
+
+
+async def test_redis_backend_shares_the_count_across_instances() -> None:
+    """The reason Redis exists.
+
+    Two RedisLimiter objects stand in for two Fargate tasks. They share no
+    process memory, so if the count were held locally each would allow the full
+    limit and the effective limit would double with every task added. Counting
+    in Redis makes the limit a property of the deployment rather than of one
+    process.
+    """
+    redis = pytest.importorskip("redis.asyncio")
+    client = redis.Redis.from_url("redis://localhost:6379/15", decode_responses=True)
+    try:
+        await client.ping()
+    except Exception:
+        pytest.skip("redis not reachable on localhost:6379")
+
+    await client.flushdb()
+    task_a, task_b = RedisLimiter(client), RedisLimiter(client)
+
+    await task_a.check("shared-client", limit=2, window_seconds=60)
+    await task_b.check("shared-client", limit=2, window_seconds=60)
+
+    with pytest.raises(HTTPException) as rejected:
+        await task_a.check("shared-client", limit=2, window_seconds=60)
+
+    assert rejected.value.status_code == 429
+    await client.flushdb()
+    await client.aclose()

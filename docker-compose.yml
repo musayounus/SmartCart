@@ -15,14 +15,29 @@ services:
       timeout: 3s
       retries: 15
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
   api:
     build: .
     environment:
       DATABASE_URL: postgresql+asyncpg://smartcart:smartcart@db:5432/smartcart
+      # With this set the rate limit is counted in Redis, so it holds across
+      # every task rather than per process.
+      REDIS_URL: redis://redis:6379/0
     ports:
       - "8000:8000"
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     # /health executes SELECT 1, so this reports the database link, not just
     # that the process is up. Lets `docker compose up --wait` mean something.
