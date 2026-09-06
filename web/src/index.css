@@ -201,6 +201,16 @@ main {
   width: 4.5rem;
 }
 
+.place-order {
+  margin-top: 1rem;
+  width: 100%;
+}
+
+/* The closing note in a list that has already drawn its last rule. */
+.suggest.unruled {
+  border-bottom: 0;
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(58px, 1fr));

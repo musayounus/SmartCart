@@ -86,11 +86,11 @@ export function RaceDemo({ products, onFinished }: Props) {
             value={shoppers}
             onChange={(e) => setShoppers(Math.min(40, Math.max(1, Number(e.target.value))))}
             disabled={running}
-            style={{ width: "4.5rem" }}
+            className="race-shopper-count"
           />
         </label>
 
-        <button onClick={run} disabled={running || !product}>
+        <button type="button" onClick={run} disabled={running || !product}>
           {running ? "Running…" : "Run the race"}
         </button>
       </div>

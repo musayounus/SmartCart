@@ -131,7 +131,7 @@ function Catalog({ products, onAdd }: { products: Product[]; onAdd: (id: number)
               )}
             </span>
             <span className="price">{sar(p.price)}</span>
-            <button className="quiet" onClick={() => onAdd(p.id)} disabled={p.stock_quantity === 0}>
+            <button type="button" className="quiet" onClick={() => onAdd(p.id)} disabled={p.stock_quantity === 0}>
               Add
             </button>
           </div>
@@ -165,7 +165,7 @@ function CartPanel({ cart, onCheckout }: { cart: Cart | null; onCheckout: () => 
             <span>Total</span>
             <span>{sar(cart.total)}</span>
           </div>
-          <button onClick={onCheckout} style={{ marginTop: "1rem", width: "100%" }}>
+          <button type="button" className="place-order" onClick={onCheckout}>
             Place order
           </button>
         </>
@@ -194,7 +194,7 @@ function Assistant() {
       <h2>Cooking something?</h2>
       <div className="race-controls">
         <input value={dish} onChange={(e) => setDish(e.target.value)} aria-label="Dish" />
-        <button className="quiet" onClick={look}>
+        <button type="button" className="quiet" onClick={look}>
           Find ingredients
         </button>
       </div>
@@ -215,7 +215,7 @@ function Assistant() {
             <span>{sar(list.estimated_total)}</span>
           </div>
           {list.unavailable.length > 0 && (
-            <p className="suggest" style={{ borderBottom: 0 }}>
+            <p className="suggest unruled">
               We don't stock {list.unavailable.join(", ")} — you'll need those elsewhere.
             </p>
           )}
