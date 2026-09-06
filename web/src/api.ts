@@ -96,7 +96,6 @@ export const api = {
   recommendations: (id: number) => request<Recommendation[]>(`/products/${id}/recommendations`),
 
   createCart: () => request<Cart>("/carts", { method: "POST" }),
-  cart: (id: string) => request<Cart>(`/carts/${id}`),
   addItem: (id: string, productId: number, quantity: number) =>
     request<Cart>(`/carts/${id}/items`, {
       method: "POST",
@@ -112,7 +111,6 @@ export const api = {
   checkout: (id: string) => request<Order>(`/carts/${id}/checkout`, { method: "POST" }),
 
   orders: () => request<OrderSummary[]>("/orders"),
-  order: (id: number) => request<Order>(`/orders/${id}`),
 
   dishes: () => request<string[]>("/assistant/dishes"),
   shoppingList: (dish: string) =>

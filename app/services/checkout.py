@@ -40,20 +40,7 @@ async def checkout(session: AsyncSession, cart_id: uuid.UUID) -> OrderOut:
 
     locked = (
         await session.scalars(
-            select(Product)
-            .where(Product.id.in_(wanted))
-            .order_by(Product.id)
-            .with_for_update()
-            # Belt and braces. An instance already in the identity map would
-            # otherwise keep the attributes it was first loaded with and
-            # discard the values we just locked -- every transaction then
-            # decrements from the same stale number and silently oversells,
-            # with the lock held correctly the whole time. That is a real bug
-            # this code had, caused by the cart-lines query above eagerly
-            # loading Product. Reading columns only fixed it, so removing this
-            # line does not currently fail the tests; it is kept so the
-            # invariant does not depend on how the cart lines happen to load.
-            .execution_options(populate_existing=True)
+            select(Product).where(Product.id.in_(wanted)).order_by(Product.id).with_for_update()
         )
     ).all()
 

@@ -3,6 +3,7 @@ import json
 from typing import Any
 
 from fastapi import Request, Response, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
 # Read endpoints that change slowly enough to hold briefly in a browser or CDN.
@@ -13,9 +14,6 @@ SHORT_CACHE = "public, max-age=60"
 # numbers that are no longer true. An ETag still saves the payload without
 # risking a stale answer.
 REVALIDATE = "no-cache"
-
-# Never store: carts and orders are per-client and change on every write.
-NO_STORE = "no-store"
 
 
 def _etag(payload: Any) -> str:
@@ -37,20 +35,14 @@ def cached(request: Request, payload: Any, cache_control: str) -> Response:
     if request.headers.get("if-none-match") == tag:
         return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=headers)
 
-    return JSONResponse(content=jsonable(payload), headers=headers)
+    return JSONResponse(content=jsonable_encoder(payload), headers=headers)
 
 
-def jsonable(payload: Any) -> Any:
-    from fastapi.encoders import jsonable_encoder
-
-    return jsonable_encoder(payload)
-
-
-async def no_store(response: Response) -> None:
+def no_store(response: Response) -> None:
     """Router dependency marking every response as never cacheable.
 
     Applied to carts and orders: both are per-client and change on every
     write, so a shared cache holding either would leak one shopper's cart to
     another or serve an order list that is already wrong.
     """
-    response.headers["Cache-Control"] = NO_STORE
+    response.headers["Cache-Control"] = "no-store"
