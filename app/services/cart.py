@@ -48,17 +48,39 @@ async def create_cart(session: AsyncSession) -> CartOut:
     return CartOut(id=cart.id, items=[], total=ZERO)
 
 
+def _refuse_beyond_stock(product: Product, wanted: int) -> None:
+    """Stop a basket asking for more than the shelf holds.
+
+    This is a courtesy, not a guarantee, and the distinction matters. It reads
+    stock without a lock and acts on what it read -- precisely the
+    check-then-act this project exists to show is not enough. Two shoppers can
+    each fill a basket with the last eight units and both will pass this check.
+
+    Checkout is the only thing that decides who actually gets them. Do not
+    grow this into a reservation without taking the same lock checkout takes.
+    """
+    if wanted > product.stock_quantity:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"Only {product.stock_quantity} of {product.name} in stock, asked for {wanted}",
+        )
+
+
 async def add_item(
     session: AsyncSession, cart_id: uuid.UUID, product_id: int, quantity: int
 ) -> CartOut:
     if await session.get(Cart, cart_id) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Cart {cart_id} not found")
-    if await session.get(Product, product_id) is None:
+
+    product = await session.get(Product, product_id)
+    if product is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Product {product_id} not found")
 
     existing = await session.scalar(
         select(CartItem).where(CartItem.cart_id == cart_id, CartItem.product_id == product_id)
     )
+    _refuse_beyond_stock(product, (existing.quantity if existing else 0) + quantity)
+
     if existing is None:
         session.add(CartItem(cart_id=cart_id, product_id=product_id, quantity=quantity))
     else:
@@ -82,6 +104,10 @@ async def set_item_quantity(
         raise HTTPException(
             status.HTTP_404_NOT_FOUND, f"Product {product_id} is not in cart {cart_id}"
         )
+
+    product = await session.get(Product, product_id)
+    if product is not None:
+        _refuse_beyond_stock(product, quantity)
 
     line.quantity = quantity
     await session.commit()

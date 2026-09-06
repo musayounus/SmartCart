@@ -59,7 +59,13 @@ export default function App() {
     if (updated) setCart(updated);
   }
 
-  async function reduce(productId: number, to: number) {
+  // How many of each product the basket already holds, so the shelf can stop
+  // offering more than the shelf has.
+  const inBasket: Record<number, number> = Object.fromEntries(
+    (cart?.items ?? []).map((i) => [i.product_id, i.quantity]),
+  );
+
+  async function setQuantity(productId: number, to: number) {
     if (!cart) return;
     const updated = await act(() => api.setItemQuantity(cart.id, productId, to));
     if (updated) setCart(updated);
@@ -111,9 +117,15 @@ export default function App() {
         {products.length > 0 && <RaceDemo products={products} onFinished={refresh} />}
 
         <div className="split">
-          <Catalog products={products} onAdd={add} />
+          <Catalog products={products} onAdd={add} inBasket={inBasket} />
           <div>
-            <CartPanel cart={cart} onCheckout={placeOrder} onRemove={remove} onReduce={reduce} />
+            <CartPanel
+              cart={cart}
+              products={products}
+              onCheckout={placeOrder}
+              onRemove={remove}
+              onSetQuantity={setQuantity}
+            />
             <Assistant />
             <Orders orders={orders} />
           </div>
@@ -123,7 +135,15 @@ export default function App() {
   );
 }
 
-function Catalog({ products, onAdd }: { products: Product[]; onAdd: (id: number) => void }) {
+function Catalog({
+  products,
+  onAdd,
+  inBasket,
+}: {
+  products: Product[];
+  onAdd: (id: number) => void;
+  inBasket: Record<number, number>;
+}) {
   const [suggestions, setSuggestions] = useState<Record<number, Recommendation[]>>({});
 
   // Bars are scaled against the fullest shelf in the shop, not against each
@@ -146,6 +166,9 @@ function Catalog({ products, onAdd }: { products: Product[]; onAdd: (id: number)
         {products.map((p) => {
           const remaining = p.stock_quantity / fullest;
           const soldOut = p.stock_quantity === 0;
+          // Already holding everything on the shelf, so there is nothing left
+          // to add. Disabling beats letting the click fail with a 409.
+          const allTaken = (inBasket[p.id] ?? 0) >= p.stock_quantity;
 
           return (
             <article key={p.id} className={`card ${soldOut ? "sold-out" : ""}`}>
@@ -167,7 +190,13 @@ function Catalog({ products, onAdd }: { products: Product[]; onAdd: (id: number)
 
               <div className="card-foot">
                 <span className="price">{sar(p.price)}</span>
-                <button type="button" className="quiet" onClick={() => onAdd(p.id)} disabled={soldOut}>
+                <button
+                  type="button"
+                  className="quiet"
+                  onClick={() => onAdd(p.id)}
+                  disabled={soldOut || allTaken}
+                  title={allTaken && !soldOut ? "All of it is already in your basket" : undefined}
+                >
                   Add
                 </button>
               </div>
@@ -181,15 +210,19 @@ function Catalog({ products, onAdd }: { products: Product[]; onAdd: (id: number)
 
 function CartPanel({
   cart,
+  products,
   onCheckout,
   onRemove,
-  onReduce,
+  onSetQuantity,
 }: {
   cart: Cart | null;
+  products: Product[];
   onCheckout: () => void;
   onRemove: (productId: number) => void;
-  onReduce: (productId: number, to: number) => void;
+  onSetQuantity: (productId: number, to: number) => void;
 }) {
+  const stockOf = (productId: number) =>
+    products.find((p) => p.id === productId)?.stock_quantity ?? 0;
   return (
     <section className="panel">
       <h2>Your basket</h2>
@@ -204,7 +237,7 @@ function CartPanel({
                 <button
                   type="button"
                   className="step"
-                  onClick={() => onReduce(item.product_id, item.quantity - 1)}
+                  onClick={() => onSetQuantity(item.product_id, item.quantity - 1)}
                   disabled={item.quantity < 2}
                   aria-label={`One fewer ${item.name}`}
                   title="One fewer"
@@ -212,6 +245,20 @@ function CartPanel({
                   &minus;
                 </button>
                 {item.quantity}
+                <button
+                  type="button"
+                  className="step"
+                  onClick={() => onSetQuantity(item.product_id, item.quantity + 1)}
+                  disabled={item.quantity >= stockOf(item.product_id)}
+                  aria-label={`One more ${item.name}`}
+                  title={
+                    item.quantity >= stockOf(item.product_id)
+                      ? "That is all the stock there is"
+                      : "One more"
+                  }
+                >
+                  +
+                </button>
               </span>
               <span className="price">{sar(item.line_total)}</span>
               <button

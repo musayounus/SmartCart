@@ -73,8 +73,19 @@ async def test_multi_line_checkout_decrements_every_product(
     assert await session.scalar(select(Product.stock_quantity).where(Product.id == 6)) == 5
 
 
-async def test_insufficient_stock_is_rejected(client: AsyncClient) -> None:
-    cart_id = await cart_with(client, product_id=6, quantity=9)  # only 8 in stock
+async def test_insufficient_stock_is_rejected(client: AsyncClient, session: AsyncSession) -> None:
+    """Stock drops after the cart was filled -- the realistic way this happens.
+
+    The cart can no longer be over-filled directly, because add-time refuses
+    more than the shelf holds. That cap is unlocked and advisory though, so a
+    legitimately built cart can still go stale the moment someone else buys.
+    Checkout is what catches it.
+    """
+    cart_id = await cart_with(client, product_id=6, quantity=8)
+
+    product = await session.get(Product, 6)
+    product.stock_quantity = 3
+    await session.commit()
 
     response = await client.post(f"/carts/{cart_id}/checkout")
 
@@ -88,13 +99,19 @@ async def test_one_short_line_decrements_nothing(
     """All-or-nothing: the line that could have succeeded must not be touched."""
     cart_id = (await client.post("/carts")).json()["id"]
     await client.post(f"/carts/{cart_id}/items", json={"product_id": 1, "quantity": 2})
-    await client.post(f"/carts/{cart_id}/items", json={"product_id": 6, "quantity": 99})
+    await client.post(f"/carts/{cart_id}/items", json={"product_id": 6, "quantity": 8})
+
+    # Someone else buys the cardamom out from under this cart.
+    product = await session.get(Product, 6)
+    product.stock_quantity = 3
+    await session.commit()
 
     response = await client.post(f"/carts/{cart_id}/checkout")
 
     assert response.status_code == 409
+    # Rice was fine and still must not move.
     assert await session.scalar(select(Product.stock_quantity).where(Product.id == 1)) == 25
-    assert await session.scalar(select(Product.stock_quantity).where(Product.id == 6)) == 8
+    assert await session.scalar(select(Product.stock_quantity).where(Product.id == 6)) == 3
 
 
 async def test_empty_cart_cannot_be_checked_out(client: AsyncClient) -> None:

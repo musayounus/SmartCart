@@ -189,3 +189,68 @@ async def test_reducing_a_line_that_is_not_there_is_rejected(client: AsyncClient
     response = await client.patch(f"/carts/{cart_id}/items/1", json={"quantity": 1})
 
     assert response.status_code == 404
+
+
+async def test_cannot_add_more_than_the_shelf_holds(client: AsyncClient) -> None:
+    """Cardamom is seeded at 8."""
+    cart_id = await create_cart(client)
+
+    response = await client.post(f"/carts/{cart_id}/items", json={"product_id": 6, "quantity": 9})
+
+    assert response.status_code == 409
+    assert "8" in response.json()["detail"]
+
+
+async def test_can_take_exactly_all_of_it(client: AsyncClient) -> None:
+    cart_id = await create_cart(client)
+
+    response = await client.post(f"/carts/{cart_id}/items", json={"product_id": 6, "quantity": 8})
+
+    assert response.status_code == 200
+    assert response.json()["items"][0]["quantity"] == 8
+
+
+async def test_repeated_adds_are_capped_on_the_running_total(client: AsyncClient) -> None:
+    """The check is against the resulting line, not the increment."""
+    cart_id = await create_cart(client)
+    await client.post(f"/carts/{cart_id}/items", json={"product_id": 6, "quantity": 6})
+
+    response = await client.post(f"/carts/{cart_id}/items", json={"product_id": 6, "quantity": 3})
+
+    assert response.status_code == 409
+
+
+async def test_cannot_raise_a_line_beyond_stock(client: AsyncClient) -> None:
+    cart_id = await create_cart(client)
+    await client.post(f"/carts/{cart_id}/items", json={"product_id": 6, "quantity": 2})
+
+    response = await client.patch(f"/carts/{cart_id}/items/6", json={"quantity": 9})
+
+    assert response.status_code == 409
+
+
+async def test_the_cart_cap_does_not_prevent_two_shoppers_holding_the_last_units(
+    client: AsyncClient,
+) -> None:
+    """The cap is a courtesy, not a concurrency guarantee.
+
+    Both baskets can hold every last unit at once, because the check reads
+    stock without a lock. Checkout is the only thing that decides who gets
+    them -- which is why removing FOR UPDATE still breaks the concurrency
+    tests, and why this cap must never be mistaken for protection.
+
+    If someone later turns this into a reservation without taking the lock
+    checkout takes, this test fails and says why.
+    """
+    first = await create_cart(client)
+    second = await create_cart(client)
+
+    a = await client.post(f"/carts/{first}/items", json={"product_id": 6, "quantity": 8})
+    b = await client.post(f"/carts/{second}/items", json={"product_id": 6, "quantity": 8})
+
+    assert a.status_code == 200
+    assert b.status_code == 200
+
+    # Both hold all 8. Checkout, not the cap, resolves it.
+    assert (await client.post(f"/carts/{first}/checkout")).status_code == 201
+    assert (await client.post(f"/carts/{second}/checkout")).status_code == 409
