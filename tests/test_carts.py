@@ -92,3 +92,47 @@ async def test_non_positive_quantity_is_rejected(client: AsyncClient) -> None:
             f"/carts/{cart_id}/items", json={"product_id": 1, "quantity": quantity}
         )
         assert response.status_code == 422
+
+
+async def test_removing_a_line_leaves_the_others(client: AsyncClient) -> None:
+    cart_id = await create_cart(client)
+    await client.post(f"/carts/{cart_id}/items", json={"product_id": 1, "quantity": 2})
+    await client.post(f"/carts/{cart_id}/items", json={"product_id": 5, "quantity": 4})
+
+    response = await client.delete(f"/carts/{cart_id}/items/1")
+
+    assert response.status_code == 200
+    assert [i["product_id"] for i in response.json()["items"]] == [5]
+    assert Decimal(response.json()["total"]) == Decimal("29.00")
+
+
+async def test_removing_everything_empties_the_cart_without_destroying_it(
+    client: AsyncClient,
+) -> None:
+    """The shopper keeps their cart; only the contents go."""
+    cart_id = await create_cart(client)
+    await client.post(f"/carts/{cart_id}/items", json={"product_id": 1, "quantity": 1})
+
+    await client.delete(f"/carts/{cart_id}/items/1")
+    cart = (await client.get(f"/carts/{cart_id}")).json()
+
+    assert cart["items"] == []
+    assert Decimal(cart["total"]) == Decimal("0.00")
+
+    # Still usable afterwards.
+    again = await client.post(f"/carts/{cart_id}/items", json={"product_id": 1, "quantity": 1})
+    assert again.status_code == 200
+
+
+async def test_removing_a_line_that_is_not_there_is_rejected(client: AsyncClient) -> None:
+    cart_id = await create_cart(client)
+
+    response = await client.delete(f"/carts/{cart_id}/items/1")
+
+    assert response.status_code == 404
+
+
+async def test_removing_from_an_unknown_cart_is_rejected(client: AsyncClient) -> None:
+    response = await client.delete("/carts/00000000-0000-0000-0000-000000000000/items/1")
+
+    assert response.status_code == 404

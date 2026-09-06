@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   api,
   ApiError,
@@ -11,26 +11,16 @@ import {
 import { RaceDemo } from "./RaceDemo";
 
 const sar = (amount: string) => `SAR ${amount}`;
+const titled = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 export default function App() {
   const [products, setProducts] = useState<Product[]>([]);
   const [cart, setCart] = useState<Cart | null>(null);
   const [orders, setOrders] = useState<OrderSummary[]>([]);
   const [error, setError] = useState("");
-  const previousStock = useRef<Record<number, number>>({});
-  const [moved, setMoved] = useState<Set<number>>(new Set());
 
   const refresh = useCallback(async () => {
-    const next = await api.products();
-    const changed = new Set(
-      next
-        .filter((p) => previousStock.current[p.id] !== undefined)
-        .filter((p) => previousStock.current[p.id] !== p.stock_quantity)
-        .map((p) => p.id),
-    );
-    previousStock.current = Object.fromEntries(next.map((p) => [p.id, p.stock_quantity]));
-    setProducts(next);
-    setMoved(changed);
+    setProducts(await api.products());
     setOrders(await api.orders());
   }, []);
 
@@ -54,6 +44,12 @@ export default function App() {
     if (updated) setCart(updated);
   }
 
+  async function remove(productId: number) {
+    if (!cart) return;
+    const updated = await act(() => api.removeItem(cart.id, productId));
+    if (updated) setCart(updated);
+  }
+
   async function placeOrder() {
     if (!cart) return;
     const order = await act(() => api.checkout(cart.id));
@@ -65,28 +61,16 @@ export default function App() {
 
   return (
     <>
-      <div className="strip">
+      <header className="strip">
         <span className="mark">SmartCart</span>
-        <div className="chips">
-          {products.map((p) => (
-            <span
-              key={p.id}
-              className={`chip ${p.stock_quantity === 0 ? "depleted" : ""} ${
-                moved.has(p.id) ? "moved" : ""
-              }`}
-            >
-              {p.name.replace(/ \d.*$/, "")}
-              <b>{p.stock_quantity}</b>
-            </span>
-          ))}
-        </div>
-      </div>
+        <span className="strip-note">Jeddah</span>
+      </header>
 
       <main>
         <h1>Nothing here can be sold twice.</h1>
         <p className="lede">
           A grocery service for Jeddah, built so that shoppers racing for the last item on the shelf
-          get a truthful answer. Watch the counter above while the race runs.
+          get a truthful answer. Run the race below and watch the shelf drain.
         </p>
 
         {error && <p className="error">{error}</p>}
@@ -96,7 +80,7 @@ export default function App() {
         <div className="split">
           <Catalog products={products} onAdd={add} />
           <div>
-            <CartPanel cart={cart} onCheckout={placeOrder} />
+            <CartPanel cart={cart} onCheckout={placeOrder} onRemove={remove} />
             <Assistant />
             <Orders orders={orders} />
           </div>
@@ -162,7 +146,15 @@ function Catalog({ products, onAdd }: { products: Product[]; onAdd: (id: number)
   );
 }
 
-function CartPanel({ cart, onCheckout }: { cart: Cart | null; onCheckout: () => void }) {
+function CartPanel({
+  cart,
+  onCheckout,
+  onRemove,
+}: {
+  cart: Cart | null;
+  onCheckout: () => void;
+  onRemove: (productId: number) => void;
+}) {
   return (
     <section className="panel">
       <h2>Your basket</h2>
@@ -175,6 +167,15 @@ function CartPanel({ cart, onCheckout }: { cart: Cart | null; onCheckout: () => 
               <span className="name">{item.name}</span>
               <span className="meta">×{item.quantity}</span>
               <span className="price">{sar(item.line_total)}</span>
+              <button
+                type="button"
+                className="drop"
+                onClick={() => onRemove(item.product_id)}
+                aria-label={`Remove ${item.name}`}
+                title={`Remove ${item.name}`}
+              >
+                ×
+              </button>
             </div>
           ))}
           <div className="total">
@@ -222,7 +223,7 @@ function Assistant() {
           {list.items.map((item) => (
             <div className="row" key={item.product_id}>
               <span className="name">{item.name}</span>
-              <span className="meta">{item.ingredient}</span>
+              <span className="meta">{titled(item.ingredient)}</span>
               <span className="price">{sar(item.price)}</span>
             </div>
           ))}
@@ -232,7 +233,7 @@ function Assistant() {
           </div>
           {list.unavailable.length > 0 && (
             <p className="suggest unruled">
-              We don't stock {list.unavailable.join(", ")} — you'll need those elsewhere.
+              We don't stock {list.unavailable.map(titled).join(", ")} — you'll need those elsewhere.
             </p>
           )}
         </>

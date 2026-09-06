@@ -102,6 +102,8 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ product_id: productId, quantity }),
     }),
+  removeItem: (id: string, productId: number) =>
+    request<Cart>(`/carts/${id}/items/${productId}`, { method: "DELETE" }),
   checkout: (id: string) => request<Order>(`/carts/${id}/checkout`, { method: "POST" }),
 
   orders: () => request<OrderSummary[]>("/orders"),

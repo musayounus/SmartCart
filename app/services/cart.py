@@ -66,3 +66,27 @@ async def add_item(
 
     await session.commit()
     return await load_cart(session, cart_id)
+
+
+async def remove_item(session: AsyncSession, cart_id: uuid.UUID, product_id: int) -> CartOut:
+    """Drop a line from the cart.
+
+    Removes the whole line rather than decrementing. A shopper who wants fewer
+    can remove and re-add; a partial-quantity control is more UI than the
+    behaviour justifies.
+    """
+    if await session.get(Cart, cart_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Cart {cart_id} not found")
+
+    line = await session.scalar(
+        select(CartItem).where(CartItem.cart_id == cart_id, CartItem.product_id == product_id)
+    )
+    if line is None:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, f"Product {product_id} is not in cart {cart_id}"
+        )
+
+    await session.delete(line)
+    await session.commit()
+    # The cart itself survives an empty basket, so the shopper can keep using it.
+    return await load_cart(session, cart_id)

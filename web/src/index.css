@@ -108,7 +108,7 @@ select {
   color: var(--ink);
 }
 
-/* ---- stock strip: always visible, because stock is the protagonist ---- */
+/* ---- header ---- */
 
 .strip {
   position: sticky;
@@ -131,6 +131,11 @@ select {
   display: none;
 }
 
+.strip-note {
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+
 .strip .mark {
   font-family: var(--display);
   font-weight: 700;
@@ -140,34 +145,6 @@ select {
   color: var(--cardamom);
 }
 
-.chips {
-  display: flex;
-  gap: 1.1rem;
-}
-
-.chip {
-  display: flex;
-  align-items: baseline;
-  gap: 0.35rem;
-  white-space: nowrap;
-  font-size: 0.82rem;
-  color: var(--ink-soft);
-}
-
-.chip b {
-  font-weight: 600;
-  font-size: 0.95rem;
-  color: var(--ink);
-  transition: color 0.2s;
-}
-
-.chip.depleted b {
-  color: var(--saffron);
-}
-
-.chip.moved b {
-  color: var(--cardamom);
-}
 
 /* ---- layout ---- */
 
@@ -272,6 +249,16 @@ main {
   animation: land 0.25s ease-out;
 }
 
+/* Turned back by the rate limiter before reaching checkout. Muted on purpose:
+   it is neither a sale nor a stock refusal, and should not be mistaken for
+   either. */
+.cell.limited {
+  background: #8d8378;
+  border-color: #8d8378;
+  color: #fff;
+  animation: land 0.25s ease-out;
+}
+
 @keyframes land {
   from {
     transform: scale(0.8);
@@ -281,7 +268,8 @@ main {
 
 @media (prefers-reduced-motion: reduce) {
   .cell.fulfilled,
-  .cell.refused {
+  .cell.refused,
+  .cell.limited {
     animation: none;
   }
 }
@@ -315,6 +303,9 @@ main {
 .tally .refused {
   border-color: var(--saffron);
 }
+.tally .limited {
+  border-color: #8d8378;
+}
 
 .verdict {
   margin: 1.25rem 0 0;
@@ -322,6 +313,28 @@ main {
   border-radius: var(--radius-sm);
   background: var(--cardamom-soft);
   color: #2c4a33;
+}
+
+.verdict.caution {
+  background: var(--saffron-soft);
+  color: #7a4a12;
+}
+
+/* Removing a line is a small, reversible action; it should not compete with
+   Add or Place order. */
+.drop {
+  background: transparent;
+  border: 0;
+  color: var(--ink-soft);
+  font-size: 1.15rem;
+  line-height: 1;
+  padding: 0 0.15rem;
+  border-radius: var(--radius-sm);
+}
+
+.drop:hover:not(:disabled) {
+  background: transparent;
+  color: var(--pomegranate);
 }
 
 /* ---- product cards ---- */

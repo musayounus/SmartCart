@@ -1,11 +1,15 @@
 import { useState } from "react";
 import { raceCheckout, type Product } from "./api";
 
-type Outcome = "pending" | "fulfilled" | "refused" | "error";
+type Outcome = "pending" | "fulfilled" | "refused" | "limited" | "error";
 
 const OUTCOME_BY_STATUS: Record<number, Outcome> = {
   201: "fulfilled",
   409: "refused",
+  // Turned back by the rate limiter before reaching checkout. Neither a sale
+  // nor a stock refusal, so it gets its own treatment rather than looking
+  // like a failure.
+  429: "limited",
 };
 
 interface Props {
@@ -51,6 +55,7 @@ export function RaceDemo({ products, onFinished }: Props) {
 
   const fulfilled = outcomes.filter((o) => o === "fulfilled").length;
   const refused = outcomes.filter((o) => o === "refused").length;
+  const limited = outcomes.filter((o) => o === "limited").length;
   const settled = outcomes.length > 0 && !running;
 
   return (
@@ -102,6 +107,7 @@ export function RaceDemo({ products, onFinished }: Props) {
               <div key={i} className={`cell ${outcome}`}>
                 {outcome === "fulfilled" && "201"}
                 {outcome === "refused" && "409"}
+                {outcome === "limited" && "429"}
                 {outcome === "error" && "!"}
               </div>
             ))}
@@ -114,6 +120,11 @@ export function RaceDemo({ products, onFinished }: Props) {
             <div className="refused">
               <span className="n">{refused}</span>turned away
             </div>
+            {limited > 0 && (
+              <div className="limited">
+                <span className="n">{limited}</span>rate limited
+              </div>
+            )}
             <div>
               <span className="n">{product?.stock_quantity ?? "—"}</span>
               left {startStock !== null && `of ${startStock}`}
@@ -122,7 +133,15 @@ export function RaceDemo({ products, onFinished }: Props) {
         </>
       )}
 
-      {settled && startStock !== null && (
+      {settled && limited > 0 && (
+        <p className="verdict caution">
+          {limited} of these never reached checkout — the rate limiter turned them
+          back first, so no stock moved and this is not an overselling result.
+          Wait a minute and run it again for a clean read.
+        </p>
+      )}
+
+      {settled && limited === 0 && startStock !== null && (
         <p className="verdict">
           {fulfilled === Math.min(startStock, shoppers)
             ? `Exactly ${fulfilled} sold from ${startStock} in stock. Stock never went below zero, and no unit was sold twice.`

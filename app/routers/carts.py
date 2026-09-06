@@ -22,6 +22,11 @@ async def add_item(cart_id: uuid.UUID, payload: CartItemIn, session: SessionDep)
     return await cart_service.add_item(session, cart_id, payload.product_id, payload.quantity)
 
 
+@router.delete("/{cart_id}/items/{product_id}", response_model=CartOut)
+async def remove_item(cart_id: uuid.UUID, product_id: int, session: SessionDep) -> CartOut:
+    return await cart_service.remove_item(session, cart_id, product_id)
+
+
 @router.get("/{cart_id}", response_model=CartOut)
 async def get_cart(cart_id: uuid.UUID, session: SessionDep) -> CartOut:
     return await cart_service.load_cart(session, cart_id)
