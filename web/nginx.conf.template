@@ -5,10 +5,14 @@ server {
     root /usr/share/nginx/html;
     index index.html;
 
+    # Upstream is templated because the two containers sit next to each
+    # other differently in each environment: separate compose services
+    # locally (api:8000), two containers in one ECS task sharing a network
+    # namespace in AWS (127.0.0.1:8000).
     # The API sits behind the same origin, so the browser makes no
     # cross-origin requests and the app needs no CORS configuration.
     location /api/ {
-        proxy_pass http://api:8000/;
+        proxy_pass http://${API_UPSTREAM}/;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         # The rate limiter keys on client IP, so the real one has to survive

@@ -1,7 +1,10 @@
 variable "region" {
   description = "AWS region to deploy into."
   type        = string
-  default     = "me-south-1" # Bahrain: closest region to Jeddah.
+  # Bahrain (me-south-1) is closest to Jeddah and is enabled on this account,
+  # but its endpoints are unreachable from the network this was deployed from.
+  # Mumbai is the nearest reachable alternative at roughly 3,000km.
+  default = "ap-south-1"
 }
 
 variable "environment" {
@@ -32,14 +35,11 @@ variable "db_password" {
   sensitive   = true
 }
 
-variable "container_image" {
-  description = "Image the ECS task runs. Defaults to the ECR repository this stack creates."
-  type        = string
-  default     = ""
-}
-
 variable "desired_count" {
-  description = "Number of Fargate tasks to run."
+  description = <<-EOT
+    Number of Fargate tasks. Two is safe only because the rate limiter counts
+    in Redis; with the in-process limiter each task allowed the full limit.
+  EOT
   type        = number
-  default     = 1
+  default     = 2
 }

@@ -12,7 +12,7 @@ resource "aws_internet_gateway" "main" {
   tags = { Name = local.name }
 }
 
-# Public subnets hold the load balancer and the NAT gateway.
+# Public subnets hold the load balancer and the application tasks.
 resource "aws_subnet" "public" {
   count = length(local.azs)
 
@@ -24,8 +24,9 @@ resource "aws_subnet" "public" {
   tags = { Name = "${local.name}-public-${local.azs[count.index]}" }
 }
 
-# Private subnets hold the application tasks and the database. Neither is
-# reachable from the internet.
+# Private subnets hold the database and the cache. Neither is routable from
+# the internet: there is no NAT and no internet gateway route here, so these
+# subnets can only talk within the VPC.
 resource "aws_subnet" "private" {
   count = length(local.azs)
 
@@ -36,22 +37,15 @@ resource "aws_subnet" "private" {
   tags = { Name = "${local.name}-private-${local.azs[count.index]}" }
 }
 
-resource "aws_eip" "nat" {
-  domain = "vpc"
-
-  tags = { Name = "${local.name}-nat" }
-}
-
-# One NAT gateway rather than one per AZ: this is a demo, and the second would
-# double the standing cost to buy availability the rest of the stack does not
-# have anyway.
-resource "aws_nat_gateway" "main" {
-  allocation_id = aws_eip.nat.id
-  subnet_id     = aws_subnet.public[0].id
-  depends_on    = [aws_internet_gateway.main]
-
-  tags = { Name = local.name }
-}
+# No NAT gateway. It was the largest line item in the bill (~$33/month) and
+# existed only so tasks in private subnets could reach ECR and CloudWatch.
+# Tasks now run in public subnets with a public IP for egress, while inbound
+# stays restricted to the load balancer's security group -- so the reachable
+# surface is unchanged and the data stores stay private.
+#
+# VPC interface endpoints for ECR, logs and S3 are the textbook alternative
+# and keep tasks fully private, but four of them cost about as much as the NAT
+# they replace. Worth the trade at production traffic, not at demo traffic.
 
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id
@@ -66,11 +60,6 @@ resource "aws_route_table" "public" {
 
 resource "aws_route_table" "private" {
   vpc_id = aws_vpc.main.id
-
-  route {
-    cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.main.id
-  }
 
   tags = { Name = "${local.name}-private" }
 }
@@ -90,8 +79,8 @@ resource "aws_route_table_association" "private" {
 }
 
 # Security groups are chained: only the load balancer may reach the tasks, and
-# only the tasks may reach the database. Neither rule uses a CIDR block, so
-# widening one subnet cannot accidentally widen access.
+# only the tasks may reach the database and cache. No rule below uses a CIDR
+# block, so widening a subnet cannot accidentally widen access.
 resource "aws_security_group" "alb" {
   name        = "${local.name}-alb"
   description = "Public entry point"
@@ -121,9 +110,9 @@ resource "aws_security_group" "task" {
   vpc_id      = aws_vpc.main.id
 
   ingress {
-    description     = "Application port, load balancer only"
-    from_port       = 8000
-    to_port         = 8000
+    description     = "Frontend port, load balancer only"
+    from_port       = 80
+    to_port         = 80
     protocol        = "tcp"
     security_groups = [aws_security_group.alb.id]
   }
@@ -152,4 +141,20 @@ resource "aws_security_group" "database" {
   }
 
   tags = { Name = "${local.name}-db" }
+}
+
+resource "aws_security_group" "cache" {
+  name        = "${local.name}-cache"
+  description = "Redis, reachable only from the application tasks"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description     = "Redis from tasks only"
+    from_port       = 6379
+    to_port         = 6379
+    protocol        = "tcp"
+    security_groups = [aws_security_group.task.id]
+  }
+
+  tags = { Name = "${local.name}-cache" }
 }

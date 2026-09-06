@@ -3,9 +3,14 @@ output "api_url" {
   value       = "http://${aws_lb.main.dns_name}"
 }
 
-output "ecr_repository_url" {
-  description = "Push the application image here before scaling the service up."
-  value       = aws_ecr_repository.app.repository_url
+output "ecr_api_repository_url" {
+  description = "Push the API image here."
+  value       = aws_ecr_repository.api.repository_url
+}
+
+output "ecr_web_repository_url" {
+  description = "Push the frontend image here."
+  value       = aws_ecr_repository.web.repository_url
 }
 
 output "database_endpoint" {
