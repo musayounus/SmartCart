@@ -188,8 +188,20 @@ across hosts, not just processes.
 
 ## Deployment
 
-`terraform/` describes the ECS Fargate + RDS stack, and it is applied — the live
-URL above runs from it.
+`terraform/` describes the whole stack, and it is applied — the live URL above
+runs from it.
+
+| Service | Role here |
+|---|---|
+| **ECS on Fargate** | Two tasks in separate AZs, two containers each |
+| **ECR** | Registry for the `api` and `web` images |
+| **RDS** | PostgreSQL 16 — where the row locks actually live |
+| **ElastiCache Serverless** | Valkey; rate-limit counters shared across tasks |
+| **Elastic Load Balancing** | ALB terminating public traffic into the tasks |
+| **VPC** | Four subnets over two AZs, an internet gateway, four security groups |
+| **Secrets Manager** | Database URL, injected at container start |
+| **CloudWatch Logs** | One log group, both containers streaming to it |
+| **IAM** | Task execution role, scoped inline rather than the managed policy |
 
 ```bash
 cd terraform && terraform init && terraform validate
@@ -210,8 +222,9 @@ launches a one-off ECS task with the API container's command overridden.
   load balancer; RDS and ElastiCache stay private with no route out.
 - **The ALB is ingress, not load balancing** — Fargate task IPs change on every
   deploy, so it supplies the stable address and health checks.
-- **The database URL comes from Secrets Manager**, injected at container start
-  rather than sitting in the task definition.
+- **The execution role is scoped by hand** — the AWS managed policy grants ECR
+  and logs on `Resource "*"`; this one names the two repositories, the one log
+  group and the one secret it actually uses.
 
 ## Limitations
 
