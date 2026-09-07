@@ -39,7 +39,7 @@ ships without test dependencies, so run it from the host:
 ```bash
 docker compose up -d db redis
 pip install -e ".[dev]"
-pytest -v            # 82 tests, ~17s
+pytest -v            
 ruff check .
 ```
 
