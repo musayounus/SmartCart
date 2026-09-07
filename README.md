@@ -111,7 +111,7 @@ erDiagram
 
     PRODUCT {
         int id PK
-        text name
+        varchar name UK
         numeric price
         int stock_quantity
     }
@@ -127,7 +127,7 @@ erDiagram
     }
     ORDER {
         int id PK
-        text status
+        varchar status
         numeric total
         timestamp created_at
     }
@@ -141,7 +141,7 @@ erDiagram
 ```
 
 - `CHECK (stock_quantity >= 0)` — the core invariant, asserted by the database
-  rather than only by application code.
+  rather than only by application code. `price >= 0` is checked the same way.
 - `UNIQUE (cart_id, product_id)` — adding a product twice increments the line.
 - `NUMERIC(10,2)` with `Decimal` in Python — no floating point in the money path.
 - `order_items.price_at_purchase` — a later price change must not rewrite history.
