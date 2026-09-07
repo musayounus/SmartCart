@@ -11,6 +11,9 @@ __pycache__/
 *.tfstate
 *.tfstate.*
 *.tfvars
+# Saved plans embed variable values, including the database password.
+tfplan
+*.tfplan
 crash.log
 
 # Frontend
