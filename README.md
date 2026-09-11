@@ -237,6 +237,9 @@ Deliberate omissions, stated rather than hidden:
 - **The database password passes through Terraform state** — inherent to
   `password` on `aws_db_instance`; `manage_master_user_password` is the way out.
 - **Single-AZ RDS and public-subnet tasks** — cost choices for a demo.
+- **No HTTPS** — a public certificate requires a domain you own, and the ALB's
+  `amazonaws.com` hostname is not one. The fixes are a domain plus ACM on a 443
+  listener, or CloudFront in front, whose default hostname has a trusted cert.
 - **Recommendations use raw co-occurrence**, so popular products look related to
   everything.
 - No payments, delivery, or HA infrastructure.
