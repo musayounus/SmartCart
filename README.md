@@ -12,7 +12,9 @@ hard requirement: **concurrent checkouts competing for the last units of stock
 must never oversell.** Everything else is the smallest surface that makes that
 problem real.
 
-**Live demo:** <http://smartcart-demo-851659227.ap-south-1.elb.amazonaws.com>
+**Not currently deployed** — the stack is torn down between demos to avoid
+running costs. See [Deployment](#deployment) to bring it up; it takes about
+fifteen minutes.
 
 ![SmartCart](screenshot.png)
 
@@ -188,8 +190,8 @@ across hosts, not just processes.
 
 ## Deployment
 
-`terraform/` describes the whole stack, and it is applied — the live URL above
-runs from it.
+`terraform/` describes the whole stack. It has been applied and verified end to
+end; it is currently destroyed so it costs nothing at rest.
 
 | Service | Role here |
 |---|---|
@@ -217,11 +219,11 @@ terraform -chdir=terraform apply
 AWS_PROFILE=smartcart ./scripts/deploy.sh    # build, push, roll the service
 ```
 
-The load balancer's DNS name changes every time it is recreated, so the live
-URL above is only valid for the current deployment; `deploy.sh` prints the
-current one.
+The load balancer's DNS name is assigned fresh each time it is created, so
+there is no stable public URL between deployments — `deploy.sh` prints the
+current one when it finishes.
 
-Racing consumes stock permanently. To restore the shelf:
+Once it is up, racing consumes stock permanently. To restore the shelf:
 
 ```bash
 AWS_PROFILE=smartcart ./scripts/reset-demo-stock.sh
