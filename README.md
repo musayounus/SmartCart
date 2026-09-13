@@ -209,6 +209,18 @@ cd terraform && terraform init && terraform validate
 
 `terraform plan` additionally needs credentials and `TF_VAR_db_password`.
 
+Terraform creates the ECR repositories but cannot fill them, and the task
+definition pins `:latest`, so bringing the stack up is two steps:
+
+```bash
+terraform -chdir=terraform apply
+AWS_PROFILE=smartcart ./scripts/deploy.sh    # build, push, roll the service
+```
+
+The load balancer's DNS name changes every time it is recreated, so the live
+URL above is only valid for the current deployment; `deploy.sh` prints the
+current one.
+
 Racing consumes stock permanently. To restore the shelf:
 
 ```bash
