@@ -12,7 +12,14 @@ resource "aws_db_instance" "main" {
   identifier     = local.name
   engine         = "postgres"
   engine_version = "16"
-  instance_class = "db.t4g.micro"
+
+  # t3 rather than the cheaper Graviton t4g: db.t4g.micro is not orderable for
+  # Postgres 16 in ap-south-1 at all -- describe-orderable-db-instance-options
+  # returns zero offerings for it, and CreateDBInstance fails with
+  # InsufficientDBInstanceCapacity rather than a clear "unsupported". Same
+  # size (2 vCPU burstable, 1 GiB); check t4g availability again if the region
+  # changes, since it is the cheaper option where offered.
+  instance_class = "db.t3.micro"
 
   allocated_storage     = 20
   max_allocated_storage = 100
