@@ -12,9 +12,14 @@ class Settings(BaseSettings):
     # reads as a successful rejection to an oversell assertion.
     #
     # Every shopper in a browser-driven race shares one client IP, so a single
-    # 20-shopper run spends 20 of this budget. 240 leaves room for repeated
-    # runs within one window. Set to 0 to disable.
-    checkout_rate_limit: int = 240
+    # run spends one unit per shopper. The UI caps a race at 40, so 100 keeps
+    # any single race clear of the limit -- a 429 can never be mistaken for a
+    # stock refusal mid-demo -- while a third rapid race inside the same window
+    # does trip it, which is the only way to show the limiter working live.
+    #
+    # 60 was too low: two races reached it, so it masked the race it sits next
+    # to. 240 was too high to demonstrate at all. Set to 0 to disable.
+    checkout_rate_limit: int = 100
     checkout_rate_window_seconds: int = 60
 
     # When set, the rate limiter counts in Redis so the limit is shared across
