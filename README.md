@@ -12,9 +12,10 @@ hard requirement: **concurrent checkouts competing for the last units of stock
 must never oversell.** Everything else is the smallest surface that makes that
 problem real.
 
-**Not currently deployed** — the stack is torn down between demos to avoid
-running costs. See [Deployment](#deployment) to bring it up; it takes about
-fifteen minutes.
+**Live demo:** <http://smartcart-demo-659293411.ap-south-1.elb.amazonaws.com>
+
+The stack is torn down between demos to avoid running costs, so this URL is
+only valid while it is up — see [Deployment](#deployment).
 
 ![SmartCart](screenshot.png)
 
@@ -190,8 +191,8 @@ across hosts, not just processes.
 
 ## Deployment
 
-`terraform/` describes the whole stack. It has been applied and verified end to
-end; it is currently destroyed so it costs nothing at rest.
+`terraform/` describes the whole stack, and it is applied — the live URL above
+runs from it. It is destroyed between demos, so it costs nothing at rest.
 
 | Service | Role here |
 |---|---|
