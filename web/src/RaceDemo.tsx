@@ -57,7 +57,6 @@ export function RaceDemo({ products, onFinished }: Props) {
   const refused = outcomes.filter((o) => o === "refused").length;
   const limited = outcomes.filter((o) => o === "limited").length;
   const settled = outcomes.length > 0 && !running;
-  const empty = (product?.stock_quantity ?? 0) === 0;
 
   return (
     <section className="panel hero">
@@ -96,21 +95,10 @@ export function RaceDemo({ products, onFinished }: Props) {
           />
         </label>
 
-        <button type="button" onClick={run} disabled={running || !product || empty}>
+        <button type="button" onClick={run} disabled={running || !product}>
           {running ? "Running…" : "Run the race"}
         </button>
       </div>
-
-      {/* An empty shelf has nothing to contend for, and racing it is actively
-          misleading: every shopper is refused when *adding* to the cart, so no
-          checkout is ever sent and the panel would show 409s that the locking
-          read never produced. Refuse the race rather than misreport it. */}
-      {empty && !running && (
-        <p className="verdict caution">
-          {product?.name} is out of stock, so there is nothing to race for — every shopper would be
-          turned away before checkout. Reset the shelf, or pick an item that still has stock.
-        </p>
-      )}
 
       {outcomes.length > 0 && (
         <>
