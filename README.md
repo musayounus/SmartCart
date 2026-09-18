@@ -224,14 +224,19 @@ The load balancer's DNS name is assigned fresh each time it is created, so
 there is no stable public URL between deployments — `deploy.sh` prints the
 current one when it finishes.
 
-Once it is up, racing consumes stock permanently. To restore the shelf:
+Racing consumes stock permanently, and **restarting does not restock** —
+seeding uses `ON CONFLICT DO NOTHING`, so it fills an empty catalog and leaves
+existing rows alone. To restore the shelf:
 
 ```bash
-AWS_PROFILE=smartcart ./scripts/reset-demo-stock.sh
+AWS_PROFILE=smartcart ./scripts/reset-demo-stock.sh     # the deployed stack
+./scripts/reset-demo-stock.sh --local                   # docker compose
 ```
 
-There is no admin endpoint and RDS is unreachable from outside the VPC, so that
-launches a one-off ECS task with the API container's command overridden.
+Remotely there is no admin endpoint and RDS is unreachable from outside the VPC,
+so that launches a one-off ECS task with the API container's command overridden.
+Both paths run the same statement and leave order history intact, since the
+recommendations endpoint reads it.
 
 - **No NAT gateway** — tasks run in public subnets with inbound restricted to the
   load balancer; RDS and ElastiCache stay private with no route out.

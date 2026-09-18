@@ -1,35 +1,30 @@
 #!/usr/bin/env bash
-# Put the shelf back to its seeded levels on the deployed stack.
+# Put the shelf back to its seeded levels.
 #
-# There is no admin endpoint by design, and RDS sits in a private subnet, so
-# the reset runs from inside the VPC: a one-off ECS task using the existing
-# task definition with its uvicorn command overridden. The container already
-# has Python, the app package, and DATABASE_URL from Secrets Manager.
+#   AWS_PROFILE=smartcart ./scripts/reset-demo-stock.sh     # the deployed stack
+#   ./scripts/reset-demo-stock.sh --local                   # docker compose
 #
-# Order history is deliberately left alone -- it feeds the recommendations
-# endpoint, and clearing it would quietly remove a working part of the demo.
+# Restarting the stack does NOT restock: seed_products uses ON CONFLICT DO
+# NOTHING, so it fills an empty catalog and leaves existing rows alone. Without
+# this script the only way back was `docker compose down -v`, which also wipes
+# the seeded order history.
 #
-#   AWS_PROFILE=smartcart ./scripts/reset-demo-stock.sh
+# Order history is deliberately left alone either way -- it feeds the
+# recommendations endpoint, and clearing it would quietly remove a working part
+# of the demo.
+#
+# Remotely there is no admin endpoint by design and RDS sits in a private
+# subnet, so the reset runs from inside the VPC: a one-off ECS task reusing the
+# existing task definition with its uvicorn command overridden. The container
+# already has Python, the app package, and DATABASE_URL from Secrets Manager.
 set -euo pipefail
 
 CLUSTER=${CLUSTER:-smartcart-demo}
 REGION=${AWS_REGION:-ap-south-1}
+LOCAL=""
+[ "${1:-}" = "--local" ] && LOCAL=1
 
-echo "Finding the deployed network by tag rather than hardcoding ids..."
-
-SUBNETS=$(aws ec2 describe-subnets --region "$REGION" \
-  --filters "Name=tag:Name,Values=${CLUSTER}-public-*" \
-  --query 'Subnets[].SubnetId' --output text | tr '\t' ',')
-
-SG=$(aws ec2 describe-security-groups --region "$REGION" \
-  --filters "Name=group-name,Values=${CLUSTER}-task" \
-  --query 'SecurityGroups[0].GroupId' --output text)
-
-if [ -z "$SUBNETS" ] || [ "$SG" = "None" ]; then
-  echo "Could not find the network for cluster '$CLUSTER' in $REGION." >&2
-  exit 1
-fi
-
+# Defined once and used by both paths, so the two can never drift apart.
 RESET_PY='
 import asyncio
 from sqlalchemy import update
@@ -51,6 +46,48 @@ async def main():
 
 asyncio.run(main())
 '
+
+show_stock() {
+  echo "Done. Current stock:"
+  curl -s --max-time 20 "$1/products" | python -c "
+import sys, json
+for p in json.load(sys.stdin):
+    print(f\"  {p['name']:<22} {p['stock_quantity']:>3}\")"
+}
+
+if [ -n "$LOCAL" ]; then
+  # The venv, because the app package and its dependencies live there. app.db
+  # reads settings.database_url, which picks up .env -- so this follows
+  # whatever host port docker-compose publishes.
+  if [ -x venv/Scripts/python.exe ]; then
+    PY=venv/Scripts/python.exe
+  elif [ -x venv/bin/python ]; then
+    PY=venv/bin/python
+  else
+    echo "No project venv found. Create one and 'pip install -e \".[dev]\"'." >&2
+    exit 1
+  fi
+
+  echo "Resetting the local database..."
+  "$PY" -c "$RESET_PY"
+  show_stock "http://localhost:8000"
+  exit 0
+fi
+
+echo "Finding the deployed network by tag rather than hardcoding ids..."
+
+SUBNETS=$(aws ec2 describe-subnets --region "$REGION" \
+  --filters "Name=tag:Name,Values=${CLUSTER}-public-*" \
+  --query 'Subnets[].SubnetId' --output text | tr '\t' ',')
+
+SG=$(aws ec2 describe-security-groups --region "$REGION" \
+  --filters "Name=group-name,Values=${CLUSTER}-task" \
+  --query 'SecurityGroups[0].GroupId' --output text)
+
+if [ -z "$SUBNETS" ] || [ "$SG" = "None" ]; then
+  echo "Could not find the network for cluster '$CLUSTER' in $REGION." >&2
+  exit 1
+fi
 
 echo "Launching the reset task..."
 
@@ -89,8 +126,4 @@ fi
 DNS=$(aws elbv2 describe-load-balancers --region "$REGION" --names "$CLUSTER" \
   --query 'LoadBalancers[0].DNSName' --output text)
 
-echo "Done. Current stock:"
-curl -s --max-time 20 "http://${DNS}/api/products" | python -c "
-import sys, json
-for p in json.load(sys.stdin):
-    print(f\"  {p['name']:<22} {p['stock_quantity']:>3}\")"
+show_stock "http://${DNS}/api"
