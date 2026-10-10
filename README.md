@@ -12,7 +12,7 @@ hard requirement: **concurrent checkouts competing for the last units of stock
 must never oversell.** Everything else is the smallest surface that makes that
 problem real.
 
-**Live demo:** <http://smartcart-demo-659293411.ap-south-1.elb.amazonaws.com>
+**Live demo:** <http://smartcart-demo-1250087084.ap-south-1.elb.amazonaws.com>
 
 The stack is torn down between demos to avoid running costs, so this URL is
 only valid while it is up — see [Deployment](#deployment).
